@@ -1,5 +1,5 @@
 # Mostrar encabezado
-Write-Host "--- REPORTE DE WINDOWS ---" -ForegroundColor Cyan
+Write-Host "--- REPORTE DE WINDOWS cambios ---" -ForegroundColor Cyan
 
 # Obtener nombre del equipo
 Write-Host "Nombre del equipo: $env:COMPUTERNAME"
