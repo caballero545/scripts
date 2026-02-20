@@ -130,9 +130,23 @@ aplicar_configuracion_dhcp() {
         return
     fi
 
+    # 1. Configurar la IP fija del Servidor automáticamente
+    # Usamos la primera IP del segmento (ej. 162.20.20.1) para el servidor
+    IP_SERVIDOR="${SEGMENTO}.1"
+    INTERFACE="enp0s3" # <--- CAMBIA ESTO si tu interfaz no es enp0s3
+
+    echo "Configurando IP fija $IP_SERVIDOR en $INTERFACE..."
+    sudo ip addr flush dev $INTERFACE
+    sudo ip addr add $IP_SERVIDOR/24 dev $INTERFACE
+    sudo ip link set $INTERFACE up
+
+    # 2. Configurar la interfaz de escucha en el archivo por defecto
+    echo "Configurando interfaz de escucha en /etc/default/isc-dhcp-server..."
+    sudo sed -i "s/INTERFACESv4=\".*\"/INTERFACESv4=\"$INTERFACE\"/" /etc/default/isc-dhcp-server
+
     echo "Aplicando cambios en /etc/dhcp/dhcpd.conf..."
 
-    # Escribir el archivo
+    # 3. Escribir el archivo dhcpd.conf
     sudo bash -c "cat > /etc/dhcp/dhcpd.conf" <<EOF
 # Configuración generada por Script Automatizado
 option domain-name "red.local";
@@ -150,7 +164,7 @@ subnet ${SEGMENTO}.0 netmask 255.255.255.0 {
 }
 EOF
 
-    # Validar y Reiniciar
+    # 4. Validar y Reiniciar
     echo "Validando archivo de configuración..."
     if sudo dhcpd -t -cf /etc/dhcp/dhcpd.conf; then
         echo "Sintaxis correcta. Reiniciando servicio..."
@@ -158,6 +172,7 @@ EOF
         sudo systemctl enable isc-dhcp-server
         echo "=========================================="
         echo "¡SERVIDOR DHCP ACTIVO Y CONFIGURADO!"
+        echo "IP DEL SERVIDOR: $IP_SERVIDOR"
         echo "=========================================="
     else
         echo "Error crítico: La configuración generada es inválida."
@@ -165,7 +180,6 @@ EOF
     
     read -p "Presiona [Enter] para volver al menú..."
 }
-
 # --- FUNCIÓN DE MONITOREO Y VALIDACIÓN ---
 
 monitorear_dhcp() {
