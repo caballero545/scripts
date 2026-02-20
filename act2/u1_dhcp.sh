@@ -109,8 +109,12 @@ configurar_rango_dhcp() {
     # 5. Tiempo de Concesión
     while true; do
         read -p "Tiempo de concesión en segundos: " LEASE_TIME
-        if [[ "$LEASE_TIME" =~ ^[0-9]+$ ]]; then break;
-        else echo "Error: Ingrese solo números."; fi
+        # Validar que sea un número y que sea mayor a 0
+        if [[ "$LEASE_TIME" =~ ^[0-9]+$ ]] && [ "$LEASE_TIME" -gt 0 ]; then 
+            break
+        else 
+            echo "Error: Ingrese un número entero positivo (mayor a 0)."
+        fi
     done
 
     echo "=========================================="
