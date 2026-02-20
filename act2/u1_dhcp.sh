@@ -133,7 +133,7 @@ aplicar_configuracion_dhcp() {
     # 1. Configurar la IP fija del Servidor automáticamente
     # Usamos la primera IP del segmento (ej. 162.20.20.1) para el servidor
     IP_SERVIDOR="${SEGMENTO}.1"
-    INTERFACE="enp0s3" # <--- CAMBIA ESTO si tu interfaz no es enp0s3
+    INTERFACE="enp0s8" # <--- CAMBIA ESTO si tu interfaz no es enp0s3
 
     echo "Configurando IP fija $IP_SERVIDOR en $INTERFACE..."
     sudo ip addr flush dev $INTERFACE
