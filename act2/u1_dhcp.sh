@@ -63,7 +63,7 @@ configurar_rango_dhcp() {
             SEGMENTO=$(echo $IP_INI | cut -d'.' -f1-3)
             break
         else
-            echo "Error: IP inválida, vacía o reservada (127.x, 0.0.0.0, 255.255.255.255)."
+            echo "Error: IP inválida, vacía o reservada"
         fi
     done
 
