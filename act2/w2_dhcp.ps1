@@ -58,7 +58,7 @@ function Configure-DHCP-Range {
 # --- FUNCIÓN 3: APLICAR EN WINDOWS SERVER ---
 function Apply-DHCP-Config {
     try {
-        # 1. Configurar IP Estática en el Servidor (Adaptador 'Ethernet' suele ser el nombre)
+        # 1. Configurar IP Estática en el Servidor
         $interface = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
         $ip_srv = "$SEGMENTO.1"
         
@@ -85,7 +85,11 @@ function Monitor-DHCP {
     Write-Host "=== ESTADO DEL SERVIDOR DHCP ===" -ForegroundColor Cyan
     Get-Service -Name DHCPServer | Select-Object Status, DisplayName
     Write-Host "`n--- Concesiones Activas (Clientes) ---"
-    Get-DhcpServerv4Lease -ScopeId "$SEGMENTO.0" -ErrorAction SilentlyContinue
+    if ($SEGMENTO) {
+        Get-DhcpServerv4Lease -ScopeId "$SEGMENTO.0" -ErrorAction SilentlyContinue
+    } else {
+        Write-Host "No se ha configurado ningún segmento aún."
+    }
     Read-Host "`nPresiona [Enter] para volver..."
 }
 
@@ -99,13 +103,17 @@ while($true) {
     Write-Host "2. Configurar y Activar Ámbito"
     Write-Host "3. Monitorear Clientes"
     Write-Host "4. Salir"
+    Write-Host "------------------------------------------"
     
-    $op = Read-Host "Seleccione una opción"
+    $op = Read-Host "Seleccione una opción (1-4)"
     switch ($op) {
         "1" { Download-Update-DHCP }
         "2" { Configure-DHCP-Range }
         "3" { Monitor-DHCP }
         "4" { exit }
-        default { Write-Host "Opción inválida." }
+        default { 
+            Write-Host "Opción inválida. Intente de nuevo." -ForegroundColor Red
+            Start-Sleep -Seconds 1
+        }
     }
 }
