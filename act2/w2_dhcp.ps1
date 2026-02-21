@@ -11,47 +11,8 @@ function Download-Update-DHCP {
     Read-Host "Presiona [Enter] para volver al menú..."
 }
 # --- FUNCIÓN 2: CONFIGURAR PARÁMETROS ---
-function Configure-DHCP-Range 
-    Write-Host "--- Configuración de Parámetros DHCP ---" -ForegroundColor Yellow
+function Configure-DHCP-Range {
     
-    # 1. IP Inicial
-    while($true) {
-        $global:IP_INI = Read-Host "Ingrese la IP Inicial (ej. 112.12.12.2)"
-        if ([ipaddress]::TryParse($IP_INI, [ref]$null) -and $IP_INI -notmatch "^127\.") {
-            $global:SEGMENTO = ($IP_INI -split '\.')[0..2] -join '.'
-            break
-        }
-        Write-Host "Error: IP inválida o reservada." -ForegroundColor Red
-    }
-
-    # 2. IP Final
-    while($true) {
-        $global:IP_FIN = Read-Host "Ingrese la IP Final (ej. 112.12.12.12)"
-        if ([ipaddress]::TryParse($IP_FIN, [ref]$null)) {
-            $seg_fin = ($IP_FIN -split '\.')[0..2] -join '.'
-            if ($seg_fin -eq $SEGMENTO) { break }
-            Write-Host "Error: Debe estar en la red $SEGMENTO.x" -ForegroundColor Red
-        } else { Write-Host "Error: IP inválida." -ForegroundColor Red }
-    }
-
-    # 3. Gateway y DNS (Opcionales)
-    $global:GATEWAY = Read-Host "Ingrese Gateway (Opcional, Enter para omitir)"
-    $global:DNS_SRV = Read-Host "Ingrese DNS (Opcional, Enter para omitir)"
-
-    # 4. Tiempo de Concesión (Validar positivo)
-    while($true) {
-        $lease = Read-Host "Tiempo de concesión en minutos"
-        if ($lease -as [int] -and [int]$lease -gt 0) {
-            $global:LEASE_TIME = [TimeSpan]::FromMinutes($lease)
-            break
-        }
-        Write-Host "Error: Ingrese un número entero positivo." -ForegroundColor Red
-    }
-
-    Write-Host "`nCONFIGURACIÓN LISTA PARA APLICAR" -ForegroundColor Green
-    Write-Host "Rango: $IP_INI - $IP_FIN"
-    Read-Host "Presiona [Enter] para aplicar cambios..."
-    Apply-DHCP-Config
 }
 
 # --- FUNCIÓN 3: APLICAR EN WINDOWS SERVER ---
