@@ -12,7 +12,7 @@ function Download-Update-DHCP {
 }
 # --- FUNCIÓN 2: CONFIGURAR PARÁMETROS ---
 function Configure-DHCP-Range {
-    Write-Host "--- Configuración de Parámetros DHCP ---" -ForegroundColor Yellow
+    Write-Host "--- Configuracion de Parametros DHCP ---" -ForegroundColor Yellow
     
     # 1. IP Inicial
     while($true) {
@@ -21,7 +21,7 @@ function Configure-DHCP-Range {
             $global:SEGMENTO = ($IP_INI -split '\.')[0..2] -join '.'
             break
         }
-        Write-Host "Error: IP inválida o reservada." -ForegroundColor Red
+        Write-Host "Error: IP invalida o reservada." -ForegroundColor Red
     }
 
     # 2. IP Final
@@ -40,16 +40,16 @@ function Configure-DHCP-Range {
 
     # 4. Tiempo de Concesión (Validar positivo)
     while($true) {
-    $lease = Read-Host "Tiempo de concesión en minutos"
+    $lease = Read-Host "Tiempo de concesion en minutos"
     # Validamos usando una expresión regular (solo números) para evitar errores de casteo
     	if ($lease -match "^[0-9]+$" -and [int]$lease -gt 0) {
         	$global:LEASE_TIME = [TimeSpan]::FromMinutes([int]$lease)
         	break
     	}
-    Write-Host "Error: Ingrese un número entero positivo." -ForegroundColor Red
+    Write-Host "Error: Ingrese un numero entero positivo." -ForegroundColor Red
     }
 
-    Write-Host "CONFIGURACIÓN LISTA PARA APLICAR" -ForegroundColor Green
+    Write-Host "CONFIGURACION LISTA PARA APLICAR" -ForegroundColor Green
     Write-Host "Rango: $IP_INI - $IP_FIN"
     Read-Host "Presiona [Enter] para aplicar cambios..."
     Apply-DHCP-Config
