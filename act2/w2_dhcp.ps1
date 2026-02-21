@@ -5,15 +5,16 @@ function Download-Update-DHCP {
     if ($check.Installed -eq $false) {
         Write-Host "Instalando Rol DHCP..."
         Install-WindowsFeature -Name DHCP -IncludeManagementTools
-    } 
-    else {
+    } else {
         Write-Host "El Rol DHCP ya está instalado."
     }
     Read-Host "Presiona [Enter] para volver al menú..."
 }
+
 # --- FUNCIÓN 2: CONFIGURAR PARÁMETROS ---
 function Configure-DHCP-Range {
     Write-Host "--- Configuración de Parámetros DHCP ---" -ForegroundColor Yellow
+    
     # 1. IP Inicial
     while($true) {
         $global:IP_INI = Read-Host "Ingrese la IP Inicial (ej. 112.12.12.2)"
@@ -31,10 +32,7 @@ function Configure-DHCP-Range {
             $seg_fin = ($IP_FIN -split '\.')[0..2] -join '.'
             if ($seg_fin -eq $SEGMENTO) { break }
             Write-Host "Error: Debe estar en la red $SEGMENTO.x" -ForegroundColor Red
-        } 
-	else {
-		 Write-Host "Error: IP inválida." -ForegroundColor Red
-	 }
+        } else { Write-Host "Error: IP inválida." -ForegroundColor Red }
     }
 
     # 3. Gateway y DNS (Opcionales)
@@ -55,7 +53,8 @@ function Configure-DHCP-Range {
     Write-Host "Rango: $IP_INI - $IP_FIN"
     Read-Host "Presiona [Enter] para aplicar cambios..."
     Apply-DHCP-Config
- }
+}
+
 # --- FUNCIÓN 3: APLICAR EN WINDOWS SERVER ---
 function Apply-DHCP-Config {
     try {
@@ -104,17 +103,13 @@ while($true) {
     Write-Host "2. Configurar y Activar Ámbito"
     Write-Host "3. Monitorear Clientes"
     Write-Host "4. Salir"
-    Write-Host "------------------------------------------"
     
-    $op = Read-Host "Seleccione una opción (1-4)"
+    $op = Read-Host "Seleccione una opción"
     switch ($op) {
         "1" { Download-Update-DHCP }
         "2" { Configure-DHCP-Range }
         "3" { Monitor-DHCP }
         "4" { exit }
-        default { 
-            Write-Host "Opción inválida. Intente de nuevo." -ForegroundColor Red
-            Start-Sleep -Seconds 1
-        }
+        default { Write-Host "Opción inválida." }
     }
 }
