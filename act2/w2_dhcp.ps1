@@ -49,7 +49,7 @@ function Configure-DHCP-Range {
     Write-Host "Error: Ingrese un número entero positivo." -ForegroundColor Red
     }
 
-    Write-Host "`nCONFIGURACIÓN LISTA PARA APLICAR" -ForegroundColor Green
+    Write-Host "CONFIGURACIÓN LISTA PARA APLICAR" -ForegroundColor Green
     Write-Host "Rango: $IP_INI - $IP_FIN"
     Read-Host "Presiona [Enter] para aplicar cambios..."
     Apply-DHCP-Config
