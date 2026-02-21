@@ -10,9 +10,8 @@ function Download-Update-DHCP {
     }
     Read-Host "Presiona [Enter] para volver al menú..."
 }
-
 # --- FUNCIÓN 2: CONFIGURAR PARÁMETROS ---
-function Configure-DHCP-Range {
+function Configure-DHCP-Range 
     Write-Host "--- Configuración de Parámetros DHCP ---" -ForegroundColor Yellow
     
     # 1. IP Inicial
