@@ -56,23 +56,41 @@ function Configure-DHCP-Range {
 }
 
 # --- FUNCIÓN 3: APLICAR EN WINDOWS SERVER ---
+# --- FUNCIÓN 3: APLICAR EN WINDOWS SERVER ---
 function Apply-DHCP-Config {
     try {
-        # 1. Configurar IP Estática en el Servidor
-        $interface = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+        # 1. Seleccionar el SEGUNDO adaptador activo
+        # Usamos -Skip 1 para saltarnos el primero y agarrar el segundo
+        $interface = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -Skip 1 -First 1
+        
+        if (-not $interface) {
+            Write-Host "Error: No se encontró un segundo adaptador de red activo." -ForegroundColor Red
+            return
+        }
+
         $ip_srv = "$SEGMENTO.1"
         
-        Write-Host "Configurando IP $ip_srv en $($interface.Name)..."
+        Write-Host "Configurando IP $ip_srv en $($interface.Name) (Segundo Adaptador)..." -ForegroundColor Cyan
+        
+        # Limpiamos IPs viejas en esa tarjeta para evitar el error de "IP ya existe"
+        Remove-NetIPAddress -InterfaceAlias $interface.Name -Confirm:$false -ErrorAction SilentlyContinue
+
+        # Asignamos la nueva IP
         New-NetIPAddress -InterfaceAlias $interface.Name -IPAddress $ip_srv -PrefixLength 24 -ErrorAction SilentlyContinue
 
         # 2. Crear el Ámbito (Scope) en el DHCP
         Add-DhcpServerv4Scope -Name "Red_Automatizada" -StartRange $IP_INI -EndRange $IP_FIN -SubnetMask 255.255.255.0 -LeaseDuration $LEASE_TIME
         
-        # 3. Opciones de Gateway y DNS
+        # 3. Vincular el servicio DHCP específicamente a esta tarjeta (BINDING)
+        # Esto soluciona el problema de que el DHCP escuche por donde no debe
+        Set-DhcpServerv4Binding -InterfaceAlias $interface.Name -BindingState $true
+        Restart-Service DHCPServer
+
+        # 4. Opciones de Gateway y DNS
         if ($GATEWAY) { Set-DhcpServerv4OptionValue -OptionId 3 -Value $GATEWAY }
         if ($DNS_SRV) { Set-DhcpServerv4OptionValue -OptionId 6 -Value $DNS_SRV }
 
-        Write-Host "¡SERVIDOR DHCP ACTIVO Y CONFIGURADO!" -ForegroundColor Green
+        Write-Host "¡SERVIDOR DHCP ACTIVO EN $($interface.Name)!" -ForegroundColor Green
     } catch {
         Write-Host "Error al aplicar: $($_.Exception.Message)" -ForegroundColor Red
     }
