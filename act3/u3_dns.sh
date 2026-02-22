@@ -22,12 +22,15 @@ set_static_ip() {
             SEGMENTO=$(echo $IP_FIJA | cut -d'.' -f1-3)
             ULTIMO_OCTETO_FIJO=$(echo $IP_FIJA | cut -d'.' -f4)
             
+            # Definimos el Gateway como el .1 del segmento actual
+            GATEWAY_PRO="${SEGMENTO}.1"
+            
             sudo ip addr flush dev $INTERFACE
             sudo ip addr add $IP_FIJA/24 dev $INTERFACE
             sudo ip link set $INTERFACE up
             
             DNS_SRV=$IP_FIJA
-            echo "IP Fija y DNS configurados en $IP_FIJA"
+            echo "IP Fija: $IP_FIJA | Gateway sugerido: $GATEWAY_PRO"
             break
         else
             echo "Error Formato de IP invalido"
@@ -61,6 +64,10 @@ configure_dhcp_pro() {
     done
 
     read -p "Tiempo de concesion (seg): " LEASE
+    
+    # Gateway forzado al .1 del segmento
+    GATEWAY_FORZADO="${SEGMENTO}.1"
+
     sudo sed -i "s/INTERFACESv4=\".*\"/INTERFACESv4=\"$INTERFACE\"/" /etc/default/isc-dhcp-server
     sudo bash -c "cat > /etc/dhcp/dhcpd.conf" <<EOF
 default-lease-time $LEASE;
@@ -68,12 +75,12 @@ max-lease-time $((LEASE * 2));
 authoritative;
 subnet ${SEGMENTO}.0 netmask 255.255.255.0 {
   range $IP_INI $IP_FIN;
-  option routers $IP_FIJA;
+  option routers $GATEWAY_FORZADO;
   option domain-name-servers $DNS_SRV;
 }
 EOF
     sudo systemctl restart isc-dhcp-server
-    echo "DHCP Activo."
+    echo "DHCP Activo. Gateway entregado a clientes: $GATEWAY_FORZADO"
     read -p "Presiona [Enter] para volver..."
 }
 create_domain() {
@@ -91,7 +98,6 @@ EOF
     echo "Dominio $DOMINIO creado."
     read -p "Presiona [Enter] para volver..."
 }
-
 list_domains() {
     echo "=== Dominios Configurados ==="
     grep "zone" /etc/bind/named.conf.local | cut -d'"' -f2
@@ -101,9 +107,7 @@ remove_domain() {
     read -p "Ingrese el nombre del dominio a Eliminar o 'm': " DOM_DEL
     [[ "$DOM_DEL" == "m" ]] && return
     
-    # Validacion corregida: Buscamos si existe la zona antes de intentar borrar
     if ! grep -q "zone \"$DOM_DEL\"" /etc/bind/named.conf.local; then
-        # Usamos -e para que el codigo de color \e[31m (Rojo) funcione en Linux
         echo -e "\e[31mError: El dominio '$DOM_DEL' no existe en el servidor.\e[0m"
         read -p "Presiona [Enter] para volver..."
         return
@@ -124,7 +128,6 @@ monitor_clients() {
     sudo systemctl status isc-dhcp-server | grep "Active:"
     
     echo -e "\n=== EQUIPOS CONECTADOS (CONCESIONES) ==="
-    # Buscamos en el archivo real de concesiones de Linux
     if [ -f /var/lib/dhcp/dhcpd.leases ]; then
         grep -E "lease|hardware ethernet|client-hostname" /var/lib/dhcp/dhcpd.leases | \
         sed 's/lease //g; s/hardware ethernet //g; s/client-hostname //g; s/ [{;]//g' | \
