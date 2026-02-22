@@ -5,16 +5,18 @@ function Download-Update-DHCP {
     if ($check.Installed -eq $false) {
         Write-Host "Instalando Rol DHCP..." -ForegroundColor Yellow
         Install-WindowsFeature -Name DHCP -IncludeManagementTools
-        Write-Host "Instalacion completada" -ForegroundColor Green
     } else {
-        Write-Host "El DHCP ya esta instalado" -ForegroundColor Green
-        read -p "Desea refrescar y reiniciar el servicio para actualizarlo (s/n): " r
+        Write-Host "El Rol DHCP ya esta instalado." -ForegroundColor Green
+        
+        # Aqui corregimos el error de la imagen f5bc01
+        $r = Read-Host "Desea refrescar y reiniciar el servicio? (s/n)"
+        
         if ($r -eq "s") {
-            Write-Host "Actualizando estado del servicio..." -ForegroundColor Cyan
+            Write-Host "Reiniciando servicio..." -ForegroundColor Cyan
             Restart-Service DHCPServer -Force
-            Write-Host "Servicio DHCP refrescado y reiniciado con exito." -ForegroundColor Green
+            Write-Host "Servicio actualizado." -ForegroundColor Green
         } else {
-            Write-Host "Se ha mantenido la version actual"
+            Write-Host "Se ha mantenido la version actual."
         }
     }
     Read-Host "Presiona [Enter] para volver al menu..."
