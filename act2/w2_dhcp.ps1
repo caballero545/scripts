@@ -100,15 +100,26 @@ function Monitor-DHCP {
     Clear-Host
     Write-Host "=== ESTADO DEL SERVIDOR DHCP ===" -ForegroundColor Cyan
     Get-Service -Name DHCPServer | Select-Object Status, DisplayName
-    Write-Host "`n--- Concesiones Activas (Clientes) ---"
-    if ($SEGMENTO) {
-        Get-DhcpServerv4Lease -ScopeId "$SEGMENTO.0" -ErrorAction SilentlyContinue
+    
+    Write-Host "`n--- Ambitos Detectados ---" -ForegroundColor Yellow
+    # Obtenemos todos los ambitos configurados en el servidor
+    $ambitos = Get-DhcpServerv4Scope
+    
+    if ($ambitos) {
+        foreach ($ambito in $ambitos) {
+            Write-Host "`nRevisando Scope: $($ambito.ScopeId) ($($ambito.Name))" -ForegroundColor White
+            $leases = Get-DhcpServerv4Lease -ScopeId $ambito.ScopeId -ErrorAction SilentlyContinue
+            if ($leases) {
+                $leases | Select-Object IPAddress, ClientId, HostName, AddressState | Format-Table -AutoSize
+            } else {
+                Write-Host "No hay clientes conectados en este ambito aun." -ForegroundColor Gray
+            }
+        }
     } else {
-        Write-Host "No se ha configurado ningún segmento aún."
+        Write-Host "No se encontraron ambitos configurados en el servidor." -ForegroundColor Red
     }
-    Read-Host "`nPresiona [Enter] para volver..."
+    Read-Host "`nPresiona [Enter] para volver al menu..."
 }
-
 # --- FUNCION 5: VER ESTADO DE RED (IPCONFIG) ---
 function Show-Network-Status {
     Clear-Host
@@ -128,7 +139,8 @@ while($true) {
     Write-Host "1. Instalar Rol DHCP"
     Write-Host "2. Configurar y Activar Ámbito"
     Write-Host "3. Monitorear Clientes"
-    Write-Host "4. Salir"
+    Write-Host "4. ipconfig"
+    Write-Host "5. Salir"
     
     $op = Read-Host "Seleccione una opción"
     switch ($op) {
