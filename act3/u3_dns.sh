@@ -1,6 +1,6 @@
 #!/bin/bash
 install_infrastructure() {
-    echo "--- Instalando/Reinstalando DHCP y DNS (BIND9) ---"
+    echo "--- Instalar/Reinstalar DHCP y DNS (BIND9) ---"
     sudo apt-get update
     sudo apt-get install -y isc-dhcp-server bind9 bind9utils bind9-doc
     sudo systemctl restart isc-dhcp-server bind9
@@ -98,17 +98,23 @@ list_domains() {
     read -p "Presiona [Enter] para volver..."
 }
 remove_domain() {
-    list_domains
+    # Eliminado el list_domains automatico como pediste
     read -p "Ingrese el nombre del dominio a Eliminar o 'm': " DOM_DEL
     [[ "$DOM_DEL" == "m" ]] && return
     
     # 1. Eliminar la zona del archivo de configuracion
+    # Esta linea busca el bloque exacto y lo borra
     sudo sed -i "/zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
+    
     # 2. Eliminar el archivo de base de datos de la zona
     sudo rm -f "/etc/bind/db.$DOM_DEL"
     
+    # 3. LOGICA EXTRA: Limpiar cache y reiniciar
+    sudo rndc flush 2>/dev/null
     sudo systemctl restart bind9
+    
     echo "Dominio $DOM_DEL eliminado correctamente."
+    echo "TIP: Si el cliente sigue dando ping, ejecuta 'ipconfig /flushdns' en Windows."
     read -p "Presiona [Enter] para volver..."
 }
 while true; do
