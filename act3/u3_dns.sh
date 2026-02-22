@@ -98,23 +98,31 @@ list_domains() {
     read -p "Presiona [Enter] para volver..."
 }
 remove_domain() {
-    # Eliminado el list_domains automatico como pediste
+    # 1. Pedir el nombre
     read -p "Ingrese el nombre del dominio a Eliminar o 'm': " DOM_DEL
     [[ "$DOM_DEL" == "m" ]] && return
     
-    # 1. Eliminar la zona del archivo de configuracion
-    # Esta linea busca el bloque exacto y lo borra
+    # 2. VALIDACION: ¿Existe el dominio en la configuracion de BIND?
+    if ! grep -q "zone \"$DOM_DEL\"" /etc/bind/named.conf.local; then
+        echo "Error: El dominio '$DOM_DEL' no existe en el servidor." -ForegroundColor Red
+        read -p "Presiona [Enter] para volver..."
+        return
+    fi
+
+    # 3. Si existe, procedemos a borrar
+    echo "Eliminando rastro de $DOM_DEL..."
+    
+    # Borrar el bloque de la zona en el config
     sudo sed -i "/zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
     
-    # 2. Eliminar el archivo de base de datos de la zona
+    # Borrar el archivo fisico de la base de datos
     sudo rm -f "/etc/bind/db.$DOM_DEL"
     
-    # 3. LOGICA EXTRA: Limpiar cache y reiniciar
+    # Limpiar cache y reiniciar para que el cambio sea instantaneo
     sudo rndc flush 2>/dev/null
     sudo systemctl restart bind9
     
-    echo "Dominio $DOM_DEL eliminado correctamente."
-    echo "TIP: Si el cliente sigue dando ping, ejecuta 'ipconfig /flushdns' en Windows."
+    echo "Dominio $DOM_DEL eliminado correctamente de la memoria y el disco"
     read -p "Presiona [Enter] para volver..."
 }
 monitor_clients() {
