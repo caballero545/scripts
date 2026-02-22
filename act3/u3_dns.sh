@@ -98,27 +98,20 @@ list_domains() {
     read -p "Presiona [Enter] para volver..."
 }
 remove_domain() {
-    # 1. Pedir el nombre
     read -p "Ingrese el nombre del dominio a Eliminar o 'm': " DOM_DEL
     [[ "$DOM_DEL" == "m" ]] && return
     
-    # 2. VALIDACION: ¿Existe el dominio en la configuracion de BIND?
+    # Validacion corregida: Buscamos si existe la zona antes de intentar borrar
     if ! grep -q "zone \"$DOM_DEL\"" /etc/bind/named.conf.local; then
-        echo "Error: El dominio '$DOM_DEL' no existe en el servidor." -ForegroundColor Red
+        # Usamos -e para que el codigo de color \e[31m (Rojo) funcione en Linux
+        echo -e "\e[31mError: El dominio '$DOM_DEL' no existe en el servidor.\e[0m"
         read -p "Presiona [Enter] para volver..."
         return
     fi
 
-    # 3. Si existe, procedemos a borrar
     echo "Eliminando rastro de $DOM_DEL..."
-    
-    # Borrar el bloque de la zona en el config
     sudo sed -i "/zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
-    
-    # Borrar el archivo fisico de la base de datos
     sudo rm -f "/etc/bind/db.$DOM_DEL"
-    
-    # Limpiar cache y reiniciar para que el cambio sea instantaneo
     sudo rndc flush 2>/dev/null
     sudo systemctl restart bind9
     
@@ -131,8 +124,8 @@ monitor_clients() {
     sudo systemctl status isc-dhcp-server | grep "Active:"
     
     echo -e "\n=== EQUIPOS CONECTADOS (CONCESIONES) ==="
+    # Buscamos en el archivo real de concesiones de Linux
     if [ -f /var/lib/dhcp/dhcpd.leases ]; then
-        # Filtramos el archivo para mostrar IP, MAC y Nombre de Host
         grep -E "lease|hardware ethernet|client-hostname" /var/lib/dhcp/dhcpd.leases | \
         sed 's/lease //g; s/hardware ethernet //g; s/client-hostname //g; s/ [{;]//g' | \
         awk 'ORS=NR%3?", ":" \n"' | sort | uniq
