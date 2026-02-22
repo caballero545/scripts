@@ -54,8 +54,6 @@ function Configure-DHCP-Range {
     Read-Host "Presiona [Enter] para aplicar cambios..."
     Apply-DHCP-Config
 }
-
-# --- FUNCIÓN 3: APLICAR EN WINDOWS SERVER ---
 # --- FUNCIÓN 3: APLICAR EN WINDOWS SERVER ---
 function Apply-DHCP-Config {
     try {
@@ -111,6 +109,16 @@ function Monitor-DHCP {
     Read-Host "`nPresiona [Enter] para volver..."
 }
 
+# --- FUNCION 5: VER ESTADO DE RED (IPCONFIG) ---
+function Show-Network-Status {
+    Clear-Host
+    Write-Host "=== ESTADO DE RED ACTUAL ===" -ForegroundColor Cyan
+    ipconfig | Select-String "IPv4", "Ethernet", "Gateway"
+    Write-Host "`n--- Adaptadores Detectados ---"
+    Get-NetAdapter | Select-Object Name, Status, LinkSpeed | Format-Table -AutoSize
+    Read-Host "`nPresiona [Enter] para volver..."
+}
+
 # --- MENÚ PRINCIPAL ---
 while($true) {
     Clear-Host
@@ -127,7 +135,8 @@ while($true) {
         "1" { Download-Update-DHCP }
         "2" { Configure-DHCP-Range }
         "3" { Monitor-DHCP }
-        "4" { exit }
+	"4" { Show-Network-Status }
+        "5" { exit }
         default { Write-Host "Opción inválida." }
     }
 }
