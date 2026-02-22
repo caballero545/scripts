@@ -1,16 +1,24 @@
-# --- FUNCIÓN 1: INSTALAR/VERIFICAR ROL DHCP ---
 function Download-Update-DHCP {
     Write-Host "--- Verificando Rol DHCP ---" -ForegroundColor Cyan
     $check = Get-WindowsFeature -Name DHCP
+    
     if ($check.Installed -eq $false) {
-        Write-Host "Instalando Rol DHCP..."
+        Write-Host "Instalando Rol DHCP..." -ForegroundColor Yellow
         Install-WindowsFeature -Name DHCP -IncludeManagementTools
+        Write-Host "Instalacion completada" -ForegroundColor Green
     } else {
-        Write-Host "El Rol DHCP ya está instalado."
+        Write-Host "El DHCP ya esta instalado" -ForegroundColor Green
+        read -p "Desea refrescar y reiniciar el servicio para actualizarlo (s/n): " r
+        if ($r -eq "s") {
+            Write-Host "Actualizando estado del servicio..." -ForegroundColor Cyan
+            Restart-Service DHCPServer -Force
+            Write-Host "Servicio DHCP refrescado y reiniciado con exito." -ForegroundColor Green
+        } else {
+            Write-Host "Se ha mantenido la version actual"
+        }
     }
-    Read-Host "Presiona [Enter] para volver al menú..."
+    Read-Host "Presiona [Enter] para volver al menu..."
 }
-# --- FUNCIÓN 2: CONFIGURAR PARÁMETROS ---
 function Configure-DHCP-Range {
     Write-Host "--- Configuracion de Parametros DHCP ---" -ForegroundColor Yellow
     
