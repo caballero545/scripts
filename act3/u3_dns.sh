@@ -117,6 +117,23 @@ remove_domain() {
     echo "TIP: Si el cliente sigue dando ping, ejecuta 'ipconfig /flushdns' en Windows."
     read -p "Presiona [Enter] para volver..."
 }
+monitor_clients() {
+    clear
+    echo "=== ESTADO DEL SERVICIO DHCP ==="
+    sudo systemctl status isc-dhcp-server | grep "Active:"
+    
+    echo -e "\n=== EQUIPOS CONECTADOS (CONCESIONES) ==="
+    if [ -f /var/lib/dhcp/dhcpd.leases ]; then
+        # Filtramos el archivo para mostrar IP, MAC y Nombre de Host
+        grep -E "lease|hardware ethernet|client-hostname" /var/lib/dhcp/dhcpd.leases | \
+        sed 's/lease //g; s/hardware ethernet //g; s/client-hostname //g; s/ [{;]//g' | \
+        awk 'ORS=NR%3?", ":" \n"' | sort | uniq
+    else
+        echo "No hay registros de clientes todavia."
+    fi
+    echo "----------------------------------------------"
+    read -p "Presiona [Enter] para volver..."
+}
 while true; do
     clear
     echo "=============================================="
@@ -136,7 +153,7 @@ while true; do
         1) install_infrastructure ;;
         2) set_static_ip ;;
         3) configure_dhcp_pro ;;
-        4) clear; sudo systemctl status isc-dhcp-server | grep Active; read -p "Enter..." ;;
+        4) monitor_clients ;;
         5) create_domain ;;
         6) remove_domain ;;
         7) list_domains ;;
