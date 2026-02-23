@@ -1,164 +1,114 @@
-function Download-Update-DHCP {
-    Write-Host "--- Verificando Rol DHCP ---" -ForegroundColor Cyan
-    $check = Get-WindowsFeature -Name DHCP
-    
-    if ($check.Installed -eq $false) {
-        Write-Host "Instalando Rol DHCP..." -ForegroundColor Yellow
-        Install-WindowsFeature -Name DHCP -IncludeManagementTools
+# --- CONFIGURACION INICIAL ---
+$IP_FIJA = ""
+$INTERFACE = "Ethernet" 
+
+function Limpiar-ZonasBasura {
+    # En Windows, las zonas vacias no se crean por error de 'Enter' 
+    # pero esto asegura que el servicio este limpio.
+    Write-Host "Limpiando configuracion DNS..." -ForegroundColor Gray
+}
+
+function Instalar-Servicios {
+    Write-Host "--- Instalando DHCP y DNS ---" -ForegroundColor Cyan
+    Install-WindowsFeature -Name DHCP, DNS -IncludeManagementTools
+    Write-Host "Servicios instalados."
+    Read-Host "Presione Enter para volver"
+}
+
+function Establecer-IPFija {
+    Write-Host "--- Configurar IP Fija y Activar DNS ---" -ForegroundColor Cyan
+    $IP_ING = Read-Host "Ingrese la IP Fija (ej. 11.11.11.2)"
+    if ($IP_ING -match "^\d{1,3}(\.\d{1,3}){3}$") {
+        $global:IP_FIJA = $IP_ING
+        $Octetos = $IP_FIJA.Split('.')
+        $global:SEGMENTO = "$($Octetos[0]).$($Octetos[1]).$($Octetos[2])"
+        $global:OCT_SRV = [int]$Octetos[3]
+        
+        # Aplicar IP y activar DNS
+        New-NetIPAddress -InterfaceAlias $INTERFACE -IPAddress $IP_FIJA -PrefixLength 24 -DefaultGateway "$SEGMENTO.1" -ErrorAction SilentlyContinue
+        Restart-Service DNS
+        Write-Host "IP $IP_FIJA fijada y DNS reiniciado." -ForegroundColor Green
     } else {
-        Write-Host "El Rol DHCP ya esta instalado." -ForegroundColor Green
-        
-        # Aqui corregimos el error de la imagen f5bc01
-        $r = Read-Host "Desea refrescar y reiniciar el servicio? (s/n)"
-        
-        if ($r -eq "s") {
-            Write-Host "Reiniciando servicio..." -ForegroundColor Cyan
-            Restart-Service DHCPServer -Force
-            Write-Host "Servicio actualizado." -ForegroundColor Green
-        } else {
-            Write-Host "Se ha mantenido la version actual."
-        }
+        Write-Host "IP invalida." -ForegroundColor Red
     }
-    Read-Host "Presiona [Enter] para volver al menu..."
-}
-function Configure-DHCP-Range {
-    Write-Host "--- Configuracion de Parametros DHCP ---" -ForegroundColor Yellow
-    
-    # 1. IP Inicial
-    while($true) {
-        $global:IP_INI = Read-Host "Ingrese la IP Inicial (ej. 112.12.12.2)"
-        if ([ipaddress]::TryParse($IP_INI, [ref]$null) -and $IP_INI -notmatch "^127\.") {
-            $global:SEGMENTO = ($IP_INI -split '\.')[0..2] -join '.'
-            break
-        }
-        Write-Host "Error: IP invalida o reservada." -ForegroundColor Red
-    }
-
-    # 2. IP Final
-    while($true) {
-        $global:IP_FIN = Read-Host "Ingrese la IP Final (ej. 112.12.12.12)"
-        if ([ipaddress]::TryParse($IP_FIN, [ref]$null)) {
-            $seg_fin = ($IP_FIN -split '\.')[0..2] -join '.'
-            if ($seg_fin -eq $SEGMENTO) { break }
-            Write-Host "Error: Debe estar en la red $SEGMENTO.x" -ForegroundColor Red
-        } else { Write-Host "Error: IP inválida." -ForegroundColor Red }
-    }
-
-    # 3. Gateway y DNS (Opcionales)
-    $global:GATEWAY = Read-Host "Ingrese Gateway (Opcional, Enter para omitir)"
-    $global:DNS_SRV = Read-Host "Ingrese DNS (Opcional, Enter para omitir)"
-
-    # 4. Tiempo de Concesión (Validar positivo)
-    while($true) {
-    $lease = Read-Host "Tiempo de concesion en minutos"
-    # Validamos usando una expresión regular (solo números) para evitar errores de casteo
-    	if ($lease -match "^[0-9]+$" -and [int]$lease -gt 0) {
-        	$global:LEASE_TIME = [TimeSpan]::FromMinutes([int]$lease)
-        	break
-    	}
-    Write-Host "Error: Ingrese un numero entero positivo." -ForegroundColor Red
-    }
-
-    Write-Host "CONFIGURACION LISTA PARA APLICAR" -ForegroundColor Green
-    Write-Host "Rango: $IP_INI - $IP_FIN"
-    Read-Host "Presiona [Enter] para aplicar cambios..."
-    Apply-DHCP-Config
-}
-# --- FUNCIÓN 3: APLICAR EN WINDOWS SERVER ---
-function Apply-DHCP-Config {
-    try {
-        # 1. Seleccionar el SEGUNDO adaptador activo
-        # Usamos -Skip 1 para saltarnos el primero y agarrar el segundo
-        $interface = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -Skip 1 -First 1
-        
-        if (-not $interface) {
-            Write-Host "Error: No se encontró un segundo adaptador de red activo." -ForegroundColor Red
-            return
-        }
-
-        $ip_srv = "$SEGMENTO.1"
-        
-        Write-Host "Configurando IP $ip_srv en $($interface.Name) (Segundo Adaptador)..." -ForegroundColor Cyan
-        
-        # Limpiamos IPs viejas en esa tarjeta para evitar el error de "IP ya existe"
-        Remove-NetIPAddress -InterfaceAlias $interface.Name -Confirm:$false -ErrorAction SilentlyContinue
-
-        # Asignamos la nueva IP
-        New-NetIPAddress -InterfaceAlias $interface.Name -IPAddress $ip_srv -PrefixLength 24 -ErrorAction SilentlyContinue
-
-        # 2. Crear el Ámbito (Scope) en el DHCP
-        Add-DhcpServerv4Scope -Name "Red_Automatizada" -StartRange $IP_INI -EndRange $IP_FIN -SubnetMask 255.255.255.0 -LeaseDuration $LEASE_TIME
-        
-        # 3. Vincular el servicio DHCP específicamente a esta tarjeta (BINDING)
-        # Esto soluciona el problema de que el DHCP escuche por donde no debe
-        Set-DhcpServerv4Binding -InterfaceAlias $interface.Name -BindingState $true
-        Restart-Service DHCPServer
-
-        # 4. Opciones de Gateway y DNS
-        if ($GATEWAY) { Set-DhcpServerv4OptionValue -OptionId 3 -Value $GATEWAY }
-        if ($DNS_SRV) { Set-DhcpServerv4OptionValue -OptionId 6 -Value $DNS_SRV }
-
-        Write-Host "¡SERVIDOR DHCP ACTIVO EN $($interface.Name)!" -ForegroundColor Green
-    } catch {
-        Write-Host "Error al aplicar: $($_.Exception.Message)" -ForegroundColor Red
-    }
-    Read-Host "Presiona [Enter] para volver..."
+    Read-Host "Enter..."
 }
 
-# --- FUNCIÓN 4: MONITOREAR ---
-function Monitor-DHCP {
-    Clear-Host
-    Write-Host "=== ESTADO DEL SERVIDOR DHCP ===" -ForegroundColor Cyan
-    Get-Service -Name DHCPServer | Select-Object Status, DisplayName
+function Configurar-DHCP {
+    if ($global:IP_FIJA -eq "") { Write-Host "Error: Ponga IP Fija primero." -ForegroundColor Red; return }
+    $MIN_INI = $global:OCT_SRV + 1
+    $IP_INI = Read-Host "IP Inicial (Minimo $SEGMENTO.$MIN_INI)"
+    $IP_FIN = Read-Host "IP Final"
     
-    Write-Host "`n--- Ambitos Detectados ---" -ForegroundColor Yellow
-    # Obtenemos todos los ambitos configurados en el servidor
-    $ambitos = Get-DhcpServerv4Scope
+    Add-DhcpServerv4Scope -Name "RangoDHCP" -StartRange $IP_INI -EndRange $IP_FIN -SubnetMask 255.255.255.0 -State Active
+    Set-DhcpServerv4OptionValue -OptionId 3 -Value "$SEGMENTO.1" # Gateway .1
+    Set-DhcpServerv4OptionValue -OptionId 6 -Value $IP_FIJA       # DNS es el Server
     
-    if ($ambitos) {
-        foreach ($ambito in $ambitos) {
-            Write-Host "`nRevisando Scope: $($ambito.ScopeId) ($($ambito.Name))" -ForegroundColor White
-            $leases = Get-DhcpServerv4Lease -ScopeId $ambito.ScopeId -ErrorAction SilentlyContinue
-            if ($leases) {
-                $leases | Select-Object IPAddress, ClientId, HostName, AddressState | Format-Table -AutoSize
-            } else {
-                Write-Host "No hay clientes conectados en este ambito aun." -ForegroundColor Gray
-            }
-        }
+    Restart-Service DHCPServer
+    Write-Host "DHCP Activo." -ForegroundColor Green
+    Read-Host "Enter..."
+}
+
+function Add-Dominio {
+    $DOM = Read-Host "Nombre del dominio (ej. aprobado.com)"
+    Add-DnsServerPrimaryZone -Name $DOM -ReplicationScope "None" -ErrorAction SilentlyContinue
+    Add-DnsServerResourceRecordA -Name "@" -IPv4Address $IP_FIJA -ZoneName $DOM
+    Add-DnsServerResourceRecordA -Name "ns" -IPv4Address $IP_FIJA -ZoneName $DOM
+    Write-Host "Dominio $DOM creado apuntando a $IP_FIJA." -ForegroundColor Green
+    Read-Host "Enter..."
+}
+
+function Del-Dominio {
+    $DOM_DEL = Read-Host "Nombre EXACTO del dominio a borrar"
+    if (Get-DnsServerZone -Name $DOM_DEL -ErrorAction SilentlyContinue) {
+        Remove-DnsServerZone -Name $DOM_DEL -Force
+        Write-Host "Dominio $DOM_DEL eliminado de forma segura." -ForegroundColor Green
     } else {
-        Write-Host "No se encontraron ambitos configurados en el servidor." -ForegroundColor Red
+        Write-Host "El dominio no existe." -ForegroundColor Red
     }
-    Read-Host "`nPresiona [Enter] para volver al menu..."
-}
-# --- FUNCION 5: VER ESTADO DE RED (IPCONFIG) ---
-function Show-Network-Status {
-    Clear-Host
-    Write-Host "=== ESTADO DE RED ACTUAL ===" -ForegroundColor Cyan
-    ipconfig | Select-String "IPv4", "Ethernet", "Gateway"
-    Write-Host "`n--- Adaptadores Detectados ---"
-    Get-NetAdapter | Select-Object Name, Status, LinkSpeed | Format-Table -AutoSize
-    Read-Host "`nPresiona [Enter] para volver..."
+    Read-Host "Enter..."
 }
 
-# --- MENÚ PRINCIPAL ---
-while($true) {
-    Clear-Host
-    Write-Host "------------------------------------------"
-    Write-Host "   MENU DE ADMINISTRACION DHCP (WINDOWS)"
-    Write-Host "------------------------------------------"
-    Write-Host "1. Instalar Rol DHCP"
-    Write-Host "2. Configurar y Activar Ámbito"
-    Write-Host "3. Monitorear Clientes"
-    Write-Host "4. ipconfig"
-    Write-Host "5. Salir"
-    
-    $op = Read-Host "Seleccione una opción"
+function Listar-Dominios {
+    Write-Host "--- Dominios en el Servidor ---" -ForegroundColor Yellow
+    Get-DnsServerZone | Where-Object { $_.IsAutoCreated -eq $false -and $_.ZoneName -ne "TrustAnchors" } | Select-Object ZoneName
+    Read-Host "Enter..."
+}
+
+function Check-Status {
+    cls
+    Write-Host "=== STATUS DETALLADO (WINDOWS) ===" -ForegroundColor Yellow
+    Write-Host "DHCP: " -NoNewline; (Get-Service DHCPServer).Status
+    Write-Host "DNS: " -NoNewline; (Get-Service DNS).Status
+    Write-Host "`n--- Zonas Cargadas ---"
+    Get-DnsServerZone | Where-Object { $_.IsAutoCreated -eq $false } | Select-Object ZoneName
+    Read-Host "Enter..."
+}
+
+function Ver-Red {
+    Get-NetIPAddress -InterfaceAlias $INTERFACE -AddressFamily IPv4 | Select-Object IPAddress, PrefixLength
+    Read-Host "Enter..."
+}
+
+# --- MENU PRINCIPAL ---
+while ($true) {
+    cls
+    Write-Host "IP SERVER: $global:IP_FIJA" -ForegroundColor Gray
+    Write-Host "1. Instalar DHCP/DNS   2. IP Fija (Server/DNS)"
+    Write-Host "3. Configurar DHCP     4. Anadir Dominio"
+    Write-Host "5. Eliminar Dominio    6. Listar Dominios"
+    Write-Host "7. Check Status        8. Ver Red"
+    Write-Host "9. Salir"
+    $op = Read-Host "Seleccione opcion"
     switch ($op) {
-        "1" { Download-Update-DHCP }
-        "2" { Configure-DHCP-Range }
-        "3" { Monitor-DHCP }
-	"4" { Show-Network-Status }
-        "5" { exit }
-        default { Write-Host "Opción inválida." }
+        "1" { Instalar-Servicios }
+        "2" { Establecer-IPFija }
+        "3" { Configurar-DHCP }
+        "4" { Add-Dominio }
+        "5" { Del-Dominio }
+        "6" { Listar-Dominios }
+        "7" { Check-Status }
+        "8" { Ver-Red }
+        "9" { exit }
     }
 }
