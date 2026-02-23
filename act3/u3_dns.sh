@@ -89,9 +89,9 @@ create_domain() {
     ZONE_FILE="/etc/bind/db.$DOMINIO"
     sudo bash -c "cat > $ZONE_FILE" <<EOF
 \$TTL 604800
-@   IN  SOA ns.$DOMINIO. admin.$DOMINIO. ( 1; 604800; 86400; 2419200; 604800 )
-@   IN  NS  ns.$DOMINIO.
-ns  IN  A   $IP_FIJA
+@ IN  SOA ns.$DOMINIO. admin.$DOMINIO. ( 1 604800 86400 2419200 604800 )
+@ IN  NS  ns.$DOMINIO.
+ns IN  A   $IP_FIJA
 EOF
     sudo bash -c "echo 'zone \"$DOMINIO\" { type master; file \"$ZONE_FILE\"; };' >> /etc/bind/named.conf.local"
     sudo systemctl restart bind9
