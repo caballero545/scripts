@@ -1,6 +1,6 @@
 # --- VARIABLES GLOBALES ---
 $global:IP_FIJA = ""
-$global:INTERFACE = "Ethernet" # Asegurate que este sea el nombre de tu red
+$global:INTERFACE = "Ethernet 2" # Asegurate que este sea el nombre de tu red
 $global:SEGMENTO = ""
 $global:OCT_SRV = 0
 # --- FUNCION DE LIMPIEZA (Antidoto) ---
