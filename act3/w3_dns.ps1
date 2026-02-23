@@ -82,41 +82,40 @@ function Configurar-DHCP {
 
 # --- 4. GESTION DE DOMINIOS ---
 function Add-Dominio {
+    Clear-Host
     if ($global:IP_FIJA -eq "") { Write-Host "Error: IP Fija requerida." -ForegroundColor Red; return }
-    Limpiar-ZonasBasura
+    
+    $DOM = Read-Host "Nombre del dominio (ej. aprobar.com)"
+    if ($DOM -eq "") { return }
 
-    $DOM = Read-Host "Nombre del dominio o [r]"
-    if ($DOM -eq "r" -or $DOM -eq "") { return }
+    # SOLUCION: Quitamos ReplicationScope y usamos ZoneFile para servidor STANDALONE
+    Add-DnsServerPrimaryZone -Name $DOM -ZoneFile "$DOM.dns" -ErrorAction SilentlyContinue
 
-    # Crear Zona y Registros A
-    Add-DnsServerPrimaryZone -Name $DOM -ReplicationScope "None" -ErrorAction SilentlyContinue
+    # Ahora los registros si funcionaran porque la zona ya existe
     Add-DnsServerResourceRecordA -Name "@" -IPv4Address $global:IP_FIJA -ZoneName $DOM
     Add-DnsServerResourceRecordA -Name "ns" -IPv4Address $global:IP_FIJA -ZoneName $DOM
 
     Restart-Service DNS
-    Write-Host "Dominio $DOM creado apuntando a $global:IP_FIJA." -ForegroundColor Green
+    Write-Host "Dominio $DOM creado correctamente." -ForegroundColor Green
     Read-Host "Enter..."
 }
-
 function Del-Dominio {
+    Clear-Host
+    Write-Host "--- Borrar Dominio Especifico ---" -ForegroundColor Cyan
     $DOM_DEL = Read-Host "Ingrese el nombre EXACTO del dominio a borrar"
-    if ($DOM_DEL -eq "") { return }
-
-    # Validacion de existencia
+    
+    # 1. Verificamos si la zona existe realmente
     if (Get-DnsServerZone -Name $DOM_DEL -ErrorAction SilentlyContinue) {
-        Write-Host "Eliminando UNICAMENTE $DOM_DEL..."
-        # Borrado de objeto exacto (No borra parecidos)
+        # 2. Si existe, lo borramos de forma aislada
         Remove-DnsServerZone -Name $DOM_DEL -Force
-        
-        Limpiar-ZonasBasura
         Restart-Service DNS
-        Write-Host "Dominio $DOM_DEL eliminado correctamente." -ForegroundColor Green
+        Write-Host "Dominio '$DOM_DEL' eliminado con exito. Los demas siguen intactos." -ForegroundColor Green
     } else {
-        Write-Host "El dominio $DOM_DEL no existe." -ForegroundColor Red
+        # 3. Si no existe, avisamos sin mostrar errores rojos
+        Write-Host "Error: El dominio '$DOM_DEL' no existe en este servidor." -ForegroundColor Yellow
     }
-    Read-Host "Enter..."
+    Read-Host "`nPresione Enter para volver al menu..."
 }
-
 function Listar-Dominios {
     Write-Host "--- Dominios en Servidor ---" -ForegroundColor Yellow
     Get-DnsServerZone | Where-Object { $_.IsAutoCreated -eq $false } | Select-Object ZoneName
