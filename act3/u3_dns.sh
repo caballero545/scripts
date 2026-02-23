@@ -74,16 +74,16 @@ EOF
 }
 # --- 4. GESTIÓN DE DOMINIOS DNS ---
 add_dominio() {
-    [[ -z "$IP_FIJA" ]] && { echo "Error: Establezca la IP Fija primero."; read -p "Enter..." ; return; }
+    [[ -z "$IP_FIJA" ]] && { echo "Error: IP Fija requerida."; return; }
     
-    while true; do
-        read -p "Nombre del nuevo dominio (ej. examen.com) o [r]: " DOM
-        [[ "$DOM" == "r" ]] && return
-        [[ -n "$DOM" && "$DOM" =~ \. ]] && break || echo "Nombre inválido."
-    done
+    # Primero: Limpiamos cualquier error previo
+    limpiar_zonas_basura
 
+    read -p "Nombre del dominio o [r]: " DOM
+    [[ "$DOM" == "r" || -z "$DOM" ]] && return
+
+    # Creamos la zona (esto ya lo tienes)
     ZONE_FILE="/etc/bind/db.$DOM"
-    # El registro A siempre apunta a la IP Fija del servidor
     sudo bash -c "cat > $ZONE_FILE" <<EOF
 \$TTL 604800
 @ IN SOA ns.$DOM. admin.$DOM. ( 1 604800 86400 2419200 604800 )
@@ -91,12 +91,21 @@ add_dominio() {
 ns IN A $IP_FIJA
 @  IN A $IP_FIJA
 EOF
+
+    # Añadimos la zona al config
+    limpiar_zonas_basura
     sudo bash -c "echo 'zone \"$DOM\" { type master; file \"$ZONE_FILE\"; };' >> /etc/bind/named.conf.local"
-    sudo systemctl restart bind9
     
-    # --- CAMBIO: Mensaje de éxito y pausa ---
-    echo -e "\n\e[32m[OK] Dominio $DOM creado exitosamente apuntando a $IP_FIJA.\e[0m"
-    read -p "Presiona [Enter] para volver al menú..."
+    # Reinicio con validación
+    if sudo named-checkconf; then
+        sudo systemctl restart bind9
+        echo "Dominio $DOM creado y DNS levantado."
+    else
+        echo "Error detectado. Limpiando configuración..."
+        limpiar_zonas_basura
+        sudo systemctl restart bind9
+    fi
+    read -p "Presiona Enter..."
 }
 del_dominio() {
     while true; do
@@ -116,6 +125,7 @@ del_dominio() {
         # Borrar el archivo físico de zona
         sudo rm -f "/etc/bind/db.$DOM_DEL"
         
+	limpiar_zonas_basura
         sudo systemctl restart bind9
         echo -e "\e[32m[OK] Dominio $DOM_DEL eliminado correctamente.\e[0m"
     else
@@ -154,6 +164,13 @@ check_status() {
     
     echo "=========================================="
     read -p "Presiona [Enter] para volver al menú..."
+}
+limpiar_zonas_basura() {
+    # Borra cualquier bloque que tenga comillas vacías: zone "" { ... };
+    sudo sed -i '/zone ""/,/};/d' /etc/bind/named.conf.local
+    
+    # Borra líneas que se hayan quedado a medias o archivos db vacíos
+    sudo sed -i '/zone " "/,/};/d' /etc/bind/named.conf.local
 }
 # --- MENÚ ---
 while true; do
