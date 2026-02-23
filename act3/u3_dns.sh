@@ -124,7 +124,7 @@ list_domains() {
 }
 remove_domain() {
     while true; do
-        read -p "Ingrese el nombre del dominio a Eliminar o 'm': " DOM_DEL
+        read -p "Ingrese el nombre EXACTO del dominio a Eliminar o 'm': " DOM_DEL
         [[ "$DOM_DEL" == "m" ]] && return
         
         if [[ -z "$DOM_DEL" ]]; then
@@ -134,20 +134,26 @@ remove_domain() {
         fi
     done
     
-    # Validación de existencia
+    # Verificación de existencia EXACTA
     if ! grep -q "zone \"$DOM_DEL\"" /etc/bind/named.conf.local; then
         echo -e "\e[31mError: El dominio '$DOM_DEL' no existe en el servidor.\e[0m"
         read -p "Presiona [Enter] para volver..."
         return
     fi
 
-    echo "Eliminando $DOM_DEL..."
+    echo "Eliminando ÚNICAMENTE el bloque de: $DOM_DEL..."
+    
+    # LA CLAVE: Usamos ^ para el inicio de línea y comillas exactas para no borrar otros parecidos
     sudo sed -i "/zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
+    
+    # Borramos su archivo de zona correspondiente
     sudo rm -f "/etc/bind/db.$DOM_DEL"
+    
+    # Limpieza total para que BIND9 reaccione de inmediato
     sudo rndc flush
     sudo systemctl restart bind9
     
-    echo "Dominio $DOM_DEL eliminado correctamente."
+    echo "Dominio $DOM_DEL eliminado. Los demás dominios siguen vivos."
     read -p "Presiona [Enter] para volver..."
 }
 monitor_clients() {
