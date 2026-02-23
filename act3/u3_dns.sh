@@ -1,10 +1,8 @@
 #!/bin/bash
-
 # --- VARIABLES GLOBALES ---
 IP_FIJA=""
 INTERFACE="enp0s8"
 SEGMENTO=""
-
 # --- 1. INSTALACIÓN DE INFRAESTRUCTURA ---
 instalar_servicios() {
     echo "--- Instalando ISC-DHCP-SERVER y BIND9 ---"
@@ -13,7 +11,6 @@ instalar_servicios() {
     echo "Servicios instalados correctamente."
     read -p "Presiona [r] para volver..."
 }
-
 # --- 2. IP FIJA (DNS, SERVER Y DOMINIOS) ---
 establecer_ip_fija() {
     echo "--- Configurar IP Fija (DNS/Host) ---"
@@ -37,7 +34,6 @@ establecer_ip_fija() {
         fi
     done
 }
-
 # --- 3. CONFIGURAR DHCP ---
 config_dhcp() {
     [[ -z "$IP_FIJA" ]] && { echo "ERROR: Primero establece la IP Fija (Opción 2)."; read -p "Enter..."; return; }
@@ -76,7 +72,6 @@ EOF
     echo "¡DHCP Activo! Gateway .1 y DNS en $IP_FIJA."
     read -p "Enter..."
 }
-
 # --- 4. GESTIÓN DE DOMINIOS DNS ---
 add_dominio() {
     [[ -z "$IP_FIJA" ]] && { echo "Error: Establezca la IP Fija primero."; read -p "Enter..." ; return; }
@@ -103,7 +98,6 @@ EOF
     echo -e "\n\e[32m[OK] Dominio $DOM creado exitosamente apuntando a $IP_FIJA.\e[0m"
     read -p "Presiona [Enter] para volver al menú..."
 }
-
 del_dominio() {
     while true; do
         read -p "Ingrese el nombre del dominio a ELIMINAR o [r]: " DOM_DEL
@@ -128,6 +122,38 @@ del_dominio() {
         echo -e "\e[31m[ERROR] El dominio '$DOM_DEL' no existe en la configuración.\e[0m"
     fi
     read -p "Presiona [Enter] para continuar..."
+}
+check_status() {
+    clear
+    echo "=========================================="
+    echo "       ESTADO DETALLADO DEL SISTEMA"
+    echo "=========================================="
+    
+    # 1. Estado de los Procesos
+    echo -n "Servicio DHCP: "
+    systemctl is-active --quiet isc-dhcp-server && echo -e "\e[32mACTIVO\e[0m" || echo -e "\e[31mCAÍDO\e[0m"
+    
+    echo -n "Servicio DNS (BIND9): "
+    systemctl is-active --quiet bind9 && echo -e "\e[32mACTIVO\e[0m" || echo -e "\e[31mCAÍDO\e[0m"
+    
+    # 2. Verificación de Zonas (Carga real)
+    echo -e "\n--- Dominios Cargados en Memoria ---"
+    ZONAS_LOADED=$(sudo named-checkconf -z | grep "loaded")
+    
+    if [ -z "$ZONAS_LOADED" ]; then
+        echo -e "\e[31m[!] No hay dominios cargados. Posibles errores de sintaxis:\e[0m"
+        # Mostramos el error real sin filtrar para que veas qué falló
+        sudo named-checkconf -z
+    else
+        echo -e "\e[32m$ZONAS_LOADED\e[0m"
+    fi
+    
+    # 3. IP Fija Actual
+    echo -e "\n--- Configuración de Red ---"
+    echo "IP Fija del Servidor: ${IP_FIJA:-No configurada}"
+    
+    echo "=========================================="
+    read -p "Presiona [Enter] para volver al menú..."
 }
 # --- MENÚ ---
 while true; do
