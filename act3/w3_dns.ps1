@@ -115,7 +115,6 @@ function Add-Dominio {
     Write-Host "Dominio $DOM creado." -ForegroundColor Green
     Read-Host "Enter..."
 }
-
 # --- (Las funciones Del-Dominio, Listar, Check-Status y Ver-Red se mantienen igual) ---
 
 function Del-Dominio {
@@ -131,6 +130,32 @@ function Del-Dominio {
     Read-Host "Enter..."
 }
 
+function Listar-Dominios {
+    Write-Host "--- Dominios en Servidor ---" -ForegroundColor Yellow
+    Get-DnsServerZone | Where-Object { $_.IsAutoCreated -eq $false } | Select-Object ZoneName
+    Read-Host "Enter..."
+}
+
+# --- 5. STATUS Y RED ---
+function Check-Status {
+    cls
+    Write-Host "==========================================" -ForegroundColor Yellow
+    Write-Host "        ESTADO DETALLADO (WINDOWS)" -ForegroundColor Yellow
+    Write-Host "==========================================" -ForegroundColor Yellow
+    
+    Write-Host "DHCP: " -NoNewline; (Get-Service DHCPServer).Status
+    Write-Host "DNS: " -NoNewline; (Get-Service DNS).Status
+    
+    Write-Host "`n--- Zonas Cargadas ---"
+    Get-DnsServerZone | Where-Object { $_.IsAutoCreated -eq $false } | Select-Object ZoneName
+    
+    Write-Host "`nIP Servidor: $global:IP_FIJA"
+    Read-Host "Presione Enter..."
+}
+function Ver-Red {
+    Get-NetIPAddress -InterfaceAlias $global:INTERFACE -AddressFamily IPv4 | Select-Object IPAddress, PrefixLength
+    Read-Host "Enter..."
+}
 # --- MENU PRINCIPAL ---
 while ($true) {
     cls
