@@ -48,6 +48,8 @@ function Establecer-IPFija {
 function Configurar-DHCP {
     if ($global:IP_FIJA -eq "") { Write-Host "ERROR: Defina IP Fija primero." -ForegroundColor Red; Read-Host "Enter..."; return }
 
+    Remove-DhcpServerv4Scope -ScopeId "$global:SEGMENTO.0" -Force -ErrorAction SilentlyContinue
+
     $GATEWAY = "$global:SEGMENTO.1"
     $MIN_INI = $global:OCT_SRV + 1
     Write-Host "--- Rango DHCP (Gateway: $GATEWAY) ---" -ForegroundColor Cyan
@@ -71,7 +73,7 @@ function Configurar-DHCP {
     # Crear Scope y opciones
     Add-DhcpServerv4Scope -Name "RedExamen" -StartRange $IP_INI -EndRange $IP_FIN -SubnetMask 255.255.255.0 -State Active -LeaseDuration $LeaseTimeSpan
     Set-DhcpServerv4OptionValue -OptionId 3 -Value $GATEWAY # Router
-    Set-DhcpServerv4OptionValue -OptionId 6 -Value $global:IP_FIJA # DNS Server
+    Set-DhcpServerv4OptionValue -OptionId 6 -Value $global:IP_FIJA -Force
 
     Restart-Service DHCPServer
     Write-Host "DHCP Activo! Gateway .1 y DNS en $global:IP_FIJA." -ForegroundColor Green
