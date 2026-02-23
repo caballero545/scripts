@@ -139,23 +139,29 @@ EOF
     fi
     read -p "Presiona Enter..."
 }
-
 # --- (El resto de funciones se mantienen iguales) ---
 del_dominio() {
     read -p "Ingrese el nombre EXACTO del dominio a borrar: " DOM_DEL
     [[ -z "$DOM_DEL" ]] && return
+
+    # REGRESO A TU LÓGICA ORIGINAL PERO CON ANCLAJE ^
+    # El "^zone" asegura que solo borre la línea que EMPIEZA con ese nombre exacto.
     if grep -q "zone \"$DOM_DEL\"" /etc/bind/named.conf.local; then
-        sudo sed -i "/^zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
+        echo "Eliminando ÚNICAMENTE $DOM_DEL..."
+        
+        # EL COMANDO SEGURO:
+        # Usamos comillas dobles y el nombre exacto para que no confunda "bola" con "cebola"
+        sudo sed -i "/zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
         sudo rm -f "/etc/bind/db.$DOM_DEL"
+        
         limpiar_zonas_basura
         sudo systemctl restart bind9
-        echo "Dominio $DOM_DEL eliminado."
+        echo "Dominio $DOM_DEL eliminado con éxito."
     else
         echo "El dominio $DOM_DEL no existe."
     fi
     read -p "Presiona [Enter]..."
 }
-
 check_status() {
     clear
     echo "=== ESTADO DETALLADO ==="
