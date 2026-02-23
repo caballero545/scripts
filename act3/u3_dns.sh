@@ -109,25 +109,31 @@ list_domains() {
     grep "zone" /etc/bind/named.conf.local | cut -d'"' -f2
     read -p "Presiona [Enter] para volver..."
 }
-
 remove_domain() {
-    read -p "Ingrese el nombre del dominio a Eliminar: " DOM_DEL
+    read -p "Ingrese el nombre exacto del dominio a Eliminar: " DOM_DEL
     [[ "$DOM_DEL" == "m" ]] && return
     
+    # Verificamos si existe antes de intentar borrar
     if ! grep -q "zone \"$DOM_DEL\"" /etc/bind/named.conf.local; then
         echo -e "\e[31mError: El dominio '$DOM_DEL' no existe.\e[0m"
         read -p "Presiona [Enter] para volver..."
         return
     fi
 
+    echo "Eliminando $DOM_DEL con precisión quirúrgica..."
+    # Borra la línea que contiene exactamente el nombre del dominio y la línea siguiente (donde está el };)
     sudo sed -i "/zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
+    
+    # Borrar el archivo de base de datos de ese dominio
     sudo rm -f "/etc/bind/db.$DOM_DEL"
-    sudo rndc flush 2>/dev/null
+    
+    # REINICIO CRUCIAL: Para que BIND9 olvide el dominio de inmediato
+    sudo rndc flush
     sudo systemctl restart bind9
-    echo "Dominio $DOM_DEL eliminado."
+    
+    echo "Dominio $DOM_DEL eliminado. Los demás siguen intactos."
     read -p "Presiona [Enter] para volver..."
 }
-
 monitor_clients() {
     clear
     echo "=== ESTADO DEL SERVICIO DHCP ==="
