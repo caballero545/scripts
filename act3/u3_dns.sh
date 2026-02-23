@@ -1,4 +1,5 @@
 #!/bin/bash
+
 install_infrastructure() {
     echo "--- Instalar/Reinstalar DHCP y DNS (BIND9) ---"
     sudo apt-get update
@@ -7,6 +8,7 @@ install_infrastructure() {
     echo "Servicios instalados y reiniciados."
     read -p "Presiona [Enter] para volver..."
 }
+
 set_static_ip() {
     echo "--- Paso 1: Establecer IP Fija del Servidor ---"
     ip -4 addr show | grep -E "eth|enp|inet "
@@ -15,14 +17,12 @@ set_static_ip() {
     [[ "$INTERFACE" == "m" ]] && return
 
     while true; do
-        read -p "Ingrese la IP fija (ej. 112.12.12.1) o 'm': " IP_FIJA
+        read -p "Ingrese la IP fija (ej. 11.11.11.2) o 'm': " IP_FIJA
         [[ "$IP_FIJA" == "m" ]] && return
         
         if [[ $IP_FIJA =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
             SEGMENTO=$(echo $IP_FIJA | cut -d'.' -f1-3)
             ULTIMO_OCTETO_FIJO=$(echo $IP_FIJA | cut -d'.' -f4)
-            
-            # Definimos el Gateway como el .1 del segmento actual
             GATEWAY_PRO="${SEGMENTO}.1"
             
             sudo ip addr flush dev $INTERFACE
@@ -33,11 +33,12 @@ set_static_ip() {
             echo "IP Fija: $IP_FIJA | Gateway sugerido: $GATEWAY_PRO"
             break
         else
-            echo "Error Formato de IP invalido"
+            echo "Error: Formato de IP invalido"
         fi
     done
     read -p "Presiona [Enter] para continuar..."
 }
+
 configure_dhcp_pro() {
     if [[ -z "$IP_FIJA" ]]; then
         echo "ERROR: Primero debe establecer la IP Fija (Opcion 2)"
@@ -52,7 +53,7 @@ configure_dhcp_pro() {
         OCTETO_INI=$(echo $IP_INI | cut -d'.' -f4)
         SEG_INI=$(echo $IP_INI | cut -d'.' -f1-3)
         if [[ "$SEG_INI" == "$SEGMENTO" ]] && [ "$OCTETO_INI" -gt "$ULTIMO_OCTETO_FIJO" ]; then break
-        else echo "Error: La IP debe ser mayor a $IP_FIJA en la red $SEGMENTO.x"; fi
+        else echo "Error: La IP debe ser mayor a $IP_FIJA"; fi
     done
 
     while true; do
@@ -60,12 +61,10 @@ configure_dhcp_pro() {
         [[ "$IP_FIN" == "m" ]] && return
         OCTETO_FIN=$(echo $IP_FIN | cut -d'.' -f4)
         if [ "$OCTETO_FIN" -gt "$OCTETO_INI" ]; then break
-        else echo "Error: La IP final debe ser mayor a la inicial ($IP_INI)."; fi
+        else echo "Error: La IP final debe ser mayor a la inicial."; fi
     done
 
     read -p "Tiempo de concesion (seg): " LEASE
-    
-    # Gateway forzado al .1 del segmento
     GATEWAY_FORZADO="${SEGMENTO}.1"
 
     sudo sed -i "s/INTERFACESv4=\".*\"/INTERFACESv4=\"$INTERFACE\"/" /etc/default/isc-dhcp-server
@@ -80,15 +79,16 @@ subnet ${SEGMENTO}.0 netmask 255.255.255.0 {
 }
 EOF
     sudo systemctl restart isc-dhcp-server
-    echo "DHCP Activo. Gateway entregado a clientes: $GATEWAY_FORZADO"
+    echo "DHCP Activo. Gateway: $GATEWAY_FORZADO"
     read -p "Presiona [Enter] para volver..."
 }
+
 create_domain() {
-    read -p "Nombre del dominio (ej. google.com) o 'm': " DOMINIO
+    read -p "Nombre del dominio (ej. aprobados.com) o 'm': " DOMINIO
     [[ "$DOMINIO" == "m" ]] && return
     ZONE_FILE="/etc/bind/db.$DOMINIO"
     
-    # Generamos el archivo con el formato exacto que pide BIND9
+    # FORMATO CORREGIDO PARA EVITAR SYNTAX ERROR
     sudo bash -c "cat > $ZONE_FILE" <<EOF
 \$TTL 604800
 @ IN SOA ns.$DOMINIO. admin.$DOMINIO. ( 1 604800 86400 2419200 604800 )
@@ -96,70 +96,60 @@ create_domain() {
 ns IN A $IP_FIJA
 EOF
 
-    # Agregamos la zona al archivo de configuración local
     sudo bash -c "echo 'zone \"$DOMINIO\" { type master; file \"$ZONE_FILE\"; };' >> /etc/bind/named.conf.local"
-    
-    # Aplicamos permisos y reiniciamos
     sudo chown bind:bind "$ZONE_FILE"
     sudo chmod 644 "$ZONE_FILE"
     sudo systemctl restart bind9
-    
-    echo "Dominio $DOMINIO creado y permisos aplicados."
+    echo "Dominio $DOMINIO creado correctamente."
     read -p "Presiona [Enter] para volver..."
 }
+
 list_domains() {
     echo "=== Dominios Configurados ==="
     grep "zone" /etc/bind/named.conf.local | cut -d'"' -f2
     read -p "Presiona [Enter] para volver..."
 }
+
 remove_domain() {
-    read -p "Ingrese el nombre del dominio a Eliminar o 'm': " DOM_DEL
+    read -p "Ingrese el nombre del dominio a Eliminar: " DOM_DEL
     [[ "$DOM_DEL" == "m" ]] && return
     
     if ! grep -q "zone \"$DOM_DEL\"" /etc/bind/named.conf.local; then
-        echo -e "\e[31mError: El dominio '$DOM_DEL' no existe en el servidor.\e[0m"
+        echo -e "\e[31mError: El dominio '$DOM_DEL' no existe.\e[0m"
         read -p "Presiona [Enter] para volver..."
         return
     fi
 
-    echo "Eliminando rastro de $DOM_DEL..."
     sudo sed -i "/zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
     sudo rm -f "/etc/bind/db.$DOM_DEL"
     sudo rndc flush 2>/dev/null
     sudo systemctl restart bind9
-    
-    echo "Dominio $DOM_DEL eliminado correctamente de la memoria y el disco"
+    echo "Dominio $DOM_DEL eliminado."
     read -p "Presiona [Enter] para volver..."
 }
+
 monitor_clients() {
     clear
     echo "=== ESTADO DEL SERVICIO DHCP ==="
     sudo systemctl status isc-dhcp-server | grep "Active:"
-    
-    echo -e "\n=== EQUIPOS CONECTADOS (CONCESIONES) ==="
-    if [ -f /var/lib/dhcp/dhcpd.leases ]; then
-        grep -E "lease|hardware ethernet|client-hostname" /var/lib/dhcp/dhcpd.leases | \
-        sed 's/lease //g; s/hardware ethernet //g; s/client-hostname //g; s/ [{;]//g' | \
-        awk 'ORS=NR%3?", ":" \n"' | sort | uniq
-    else
-        echo "No hay registros de clientes todavia."
-    fi
-    echo "----------------------------------------------"
+    echo -e "\n=== EQUIPOS CONECTADOS ==="
+    [ -f /var/lib/dhcp/dhcpd.leases ] && grep "lease" /var/lib/dhcp/dhcpd.leases | sort | uniq || echo "Sin clientes."
     read -p "Presiona [Enter] para volver..."
 }
+
 while true; do
     clear
     echo "=============================================="
-    echo "LINUX (DHCP & DNS)"
+    echo "LINUX (DHCP & DNS) - Gateway .1"
     echo "=============================================="
-    echo "1. Instalar/Reinstalar DHCP y DNS"
-    echo "2. Establecer IP Fija (Servidor)"
+    echo "1. Instalar/Reinstalar"
+    echo "2. IP Fija (Servidor)"
     echo "3. Configurar DHCP"
-    echo "4. Monitorea DHCP (Clientes)"
-    echo "5. Crear Dominio (DNS)"
+    echo "4. Monitor"
+    echo "5. Crear Dominio"
     echo "6. Eliminar Dominio"
     echo "7. Listar Dominios"
-    echo "8. Ver Red (ip addr)"
+    echo "8. Ver Red"
     echo "9. Salir"
     read -p "Opcion: " op
     case $op in
