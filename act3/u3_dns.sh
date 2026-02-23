@@ -1,49 +1,67 @@
 #!/bin/bash
 
-# --- VARIABLES ---
+# --- VARIABLES GLOBALES ---
 IP_FIJA=""
 INTERFACE="enp0s8"
 SEGMENTO=""
 
-# --- 1. INSTALACIÓN ---
-instalar_todo() {
-    echo "--- Instalando DHCP y DNS (BIND9) ---"
+# --- 1. INSTALACIÓN DE INFRAESTRUCTURA ---
+instalar_servicios() {
+    echo "--- Instalando ISC-DHCP-SERVER y BIND9 ---"
     sudo apt-get update && sudo apt-get install -y isc-dhcp-server bind9 bind9utils
     sudo systemctl enable isc-dhcp-server bind9
-    echo "Servicios instalados."
+    echo "Servicios instalados correctamente."
     read -p "Presiona [r] para volver..."
 }
 
-# --- 2. IP FIJA (EL CORAZÓN DEL SCRIPT) ---
-set_ip_fija() {
-    echo "--- Configurar IP del Servidor ---"
+# --- 2. IP FIJA (DNS, SERVER Y DOMINIOS) ---
+establecer_ip_fija() {
+    echo "--- Configurar IP Fija (DNS/Host) ---"
     while true; do
-        read -p "Ingrese IP Fija (ej. 11.11.11.2) o [r]: " IP_ING
+        read -p "Ingrese la IP Fija (ej. 11.11.11.2) o [r]: " IP_ING
         [[ "$IP_ING" == "r" ]] && return
+        
         if [[ $IP_ING =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
             IP_FIJA=$IP_ING
             SEGMENTO=$(echo $IP_FIJA | cut -d'.' -f1-3)
-            OCTETO_SRV=$(echo $IP_FIJA | cut -d'.' -f4)
+            OCT_SRV=$(echo $IP_FIJA | cut -d'.' -f4)
+            
+            # Aplicar a la interfaz
             sudo ip addr flush dev $INTERFACE
             sudo ip addr add $IP_FIJA/24 dev $INTERFACE
             sudo ip link set $INTERFACE up
+            echo "IP Fija establecida: $IP_FIJA. Los dominios apuntarán aquí."
             break
-        else echo "IP inválida."; fi
+        else
+            echo "Error: Formato de IP inválido."
+        fi
     done
 }
 
 # --- 3. CONFIGURAR DHCP ---
 config_dhcp() {
-    [[ -z "$IP_FIJA" ]] && { echo "ERROR: Primero pon la IP Fija."; read -p "Enter..."; return; }
+    [[ -z "$IP_FIJA" ]] && { echo "ERROR: Primero establece la IP Fija (Opción 2)."; read -p "Enter..."; return; }
     
     GATEWAY="${SEGMENTO}.1"
-    MIN_INI=$((OCTETO_SRV + 1))
+    MIN_INI=$((OCT_SRV + 1)) # Validación: IP inicial >= IP_SRV + 1
     
-    echo "--- Rango DHCP (Segmento $SEGMENTO.x) ---"
-    read -p "IP Inicial (Mínimo $SEGMENTO.$MIN_INI): " IP_INI
-    read -p "IP Final: " IP_FIN
-    read -p "Lease (seg): " LEASE
+    echo "--- Rango DHCP (Gateway: $GATEWAY) ---"
+    while true; do
+        read -p "IP Inicial (Mínimo $SEGMENTO.$MIN_INI) o [r]: " IP_INI
+        [[ "$IP_INI" == "r" ]] && return
+        OCT_INI=$(echo $IP_INI | cut -d'.' -f4)
+        if [[ "$(echo $IP_INI | cut -d'.' -f1-3)" == "$SEGMENTO" && $OCT_INI -ge $MIN_INI ]]; then
+            break
+        else
+            echo "Error: La IP inicial debe ser mínimo $SEGMENTO.$MIN_INI."
+        fi
+    done
 
+    read -p "IP Final (ej. $SEGMENTO.254): " IP_FIN
+    read -p "Lease time (seg): " LEASE
+
+    # Configuración de archivos
+    sudo sed -i "s/INTERFACESv4=\".*\"/INTERFACESv4=\"$INTERFACE\"/" /etc/default/isc-dhcp-server
     sudo bash -c "cat > /etc/dhcp/dhcpd.conf" <<EOF
 default-lease-time $LEASE;
 max-lease-time $((LEASE * 2));
@@ -54,19 +72,23 @@ subnet ${SEGMENTO}.0 netmask 255.255.255.0 {
   option domain-name-servers $IP_FIJA;
 }
 EOF
-    sudo sed -i "s/INTERFACESv4=\".*\"/INTERFACESv4=\"$INTERFACE\"/" /etc/default/isc-dhcp-server
     sudo systemctl restart isc-dhcp-server
-    echo "DHCP Activo."
+    echo "¡DHCP Activo! Gateway .1 y DNS en $IP_FIJA."
     read -p "Enter..."
 }
 
-# --- 4. GESTIÓN DE DOMINIOS (DNS) ---
+# --- 4. GESTIÓN DE DOMINIOS DNS ---
 add_dominio() {
-    [[ -z "$IP_FIJA" ]] && { echo "Error: Falta IP Fija."; return; }
-    read -p "Nombre del dominio (ej. hola.com) o [r]: " DOM
-    [[ "$DOM" == "r" || -z "$DOM" ]] && return
+    [[ -z "$IP_FIJA" ]] && { echo "Error: Establezca la IP Fija primero."; read -p "Enter..." ; return; }
+    
+    while true; do
+        read -p "Nombre del nuevo dominio (ej. examen.com) o [r]: " DOM
+        [[ "$DOM" == "r" ]] && return
+        [[ -n "$DOM" && "$DOM" =~ \. ]] && break || echo "Nombre inválido."
+    done
 
     ZONE_FILE="/etc/bind/db.$DOM"
+    # El registro A siempre apunta a la IP Fija del servidor
     sudo bash -c "cat > $ZONE_FILE" <<EOF
 \$TTL 604800
 @ IN SOA ns.$DOM. admin.$DOM. ( 1 604800 86400 2419200 604800 )
@@ -76,53 +98,49 @@ ns IN A $IP_FIJA
 EOF
     sudo bash -c "echo 'zone \"$DOM\" { type master; file \"$ZONE_FILE\"; };' >> /etc/bind/named.conf.local"
     sudo systemctl restart bind9
-    echo "Dominio $DOM añadido."
-}
-
-delete_dominio() {
-    read -p "Dominio a ELIMINAR o [r]: " DOM_DEL
-    [[ "$DOM_DEL" == "r" || -z "$DOM_DEL" ]] && return
     
+    # --- CAMBIO: Mensaje de éxito y pausa ---
+    echo -e "\n\e[32m[OK] Dominio $DOM creado exitosamente apuntando a $IP_FIJA.\e[0m"
+    read -p "Presiona [Enter] para volver al menú..."
+}
+
+del_dominio() {
+    while true; do
+        read -p "Ingrese el nombre del dominio a ELIMINAR o [r]: " DOM_DEL
+        [[ "$DOM_DEL" == "r" ]] && return
+        [[ -z "$DOM_DEL" ]] && echo "No puede estar vacío." || break
+    done
+
+    # --- CAMBIO: Validación de existencia antes de borrar ---
     if grep -q "zone \"$DOM_DEL\"" /etc/bind/named.conf.local; then
-        # Borrado quirúrgico
-        sudo sed -i "/zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
+        echo "Buscando dominio $DOM_DEL..."
+        
+        # --- CAMBIO: Borrado de bloque exacto (Evita borrar otros) ---
+        # El comando busca la línea que EMPIEZA exactamente con zone "dominio"
+        sudo sed -i "/^zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
+        
+        # Borrar el archivo físico de zona
         sudo rm -f "/etc/bind/db.$DOM_DEL"
+        
         sudo systemctl restart bind9
-        echo "Dominio eliminado."
+        echo -e "\e[32m[OK] Dominio $DOM_DEL eliminado correctamente.\e[0m"
     else
-        echo "No existe."
+        echo -e "\e[31m[ERROR] El dominio '$DOM_DEL' no existe en la configuración.\e[0m"
     fi
-    read -p "Enter..."
+    read -p "Presiona [Enter] para continuar..."
 }
-
-listar_dominios() {
-    echo "--- Dominios en BIND9 ---"
-    grep "zone" /etc/bind/named.conf.local | cut -d'"' -f2
-    read -p "Enter..."
-}
-
-# --- 5. CHECK STATUS ---
-check_status() {
-    echo "=== STATUS DHCP ==="
-    sudo systemctl is-active isc-dhcp-server
-    echo "=== STATUS DNS (BIND9) ==="
-    sudo systemctl is-active bind9
-    echo "=== ZONAS CARGADAS ==="
-    sudo named-checkconf -z | grep "loaded"
-    read -p "Enter..."
-}
-
-# --- MENU ---
+# --- MENÚ ---
 while true; do
     clear
-    echo "IP SRV: $IP_FIJA"
-    echo "1. Instalar  2. IP Fija  3. Config DHCP"
-    echo "4. Add Dom   5. Del Dom   6. Listar Dom"
-    echo "7. Status    8. Ver Red   9. Salir"
-    read -p "Opcion: " op
+    echo "IP SRV (DNS/DOM): ${IP_FIJA:-PENDIENTE}"
+    echo "1. Instalar DHCP/DNS   2. IP Fija (Server/DNS)"
+    echo "3. Configurar DHCP     4. Añadir Dominio"
+    echo "5. Eliminar Dominio    6. Listar Dominios"
+    echo "7. Check Status        8. Ver Red        9. Salir"
+    read -p "Seleccione: " op
     case $op in
-        1) instalar_todo ;; 2) set_ip_fija ;; 3) config_dhcp ;;
-        4) add_dominio ;; 5) delete_dominio ;; 6) listar_dominios ;;
+        1) instalar_servicios ;; 2) establecer_ip_fija ;; 3) config_dhcp ;;
+        4) add_dominio ;; 5) del_dominio ;; 6) grep "zone" /etc/bind/named.conf.local | cut -d'"' -f2; read -p "..." ;;
         7) check_status ;; 8) ip addr; read -p "..." ;; 9) exit 0 ;;
     esac
 done
