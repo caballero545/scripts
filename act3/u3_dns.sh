@@ -13,7 +13,7 @@ instalar_servicios() {
 }
 # --- 2. IP FIJA (DNS, SERVER Y DOMINIOS) ---
 establecer_ip_fija() {
-    echo "--- Configurar IP Fija (DNS/Host) ---"
+    echo "--- Configurar IP Fija y Activar DNS ---"
     while true; do
         read -p "Ingrese la IP Fija (ej. 11.11.11.2) o [r]: " IP_ING
         [[ "$IP_ING" == "r" ]] && return
@@ -23,15 +23,16 @@ establecer_ip_fija() {
             SEGMENTO=$(echo $IP_FIJA | cut -d'.' -f1-3)
             OCT_SRV=$(echo $IP_FIJA | cut -d'.' -f4)
             
-            # Aplicar a la interfaz
             sudo ip addr flush dev $INTERFACE
             sudo ip addr add $IP_FIJA/24 dev $INTERFACE
             sudo ip link set $INTERFACE up
-            echo "IP Fija establecida: $IP_FIJA. Los dominios apuntarán aquí."
+            
+            # --- CURAR Y ACTIVAR DNS AQUÍ ---
+            limpiar_zonas_basura
+            sudo systemctl restart bind9
+            echo "IP establecida y DNS reiniciado."
             break
-        else
-            echo "Error: Formato de IP inválido."
-        fi
+        else echo "IP inválida."; fi
     done
 }
 # --- 3. CONFIGURAR DHCP ---
@@ -108,30 +109,24 @@ EOF
     read -p "Presiona Enter..."
 }
 del_dominio() {
-    while true; do
-        read -p "Ingrese el nombre del dominio a ELIMINAR o [r]: " DOM_DEL
-        [[ "$DOM_DEL" == "r" ]] && return
-        [[ -z "$DOM_DEL" ]] && echo "No puede estar vacío." || break
-    done
+    read -p "Ingrese el nombre EXACTO del dominio a borrar: " DOM_DEL
+    [[ -z "$DOM_DEL" ]] && return
 
-    # --- CAMBIO: Validación de existencia antes de borrar ---
+    # Verificamos si existe antes de hacer nada
     if grep -q "zone \"$DOM_DEL\"" /etc/bind/named.conf.local; then
-        echo "Buscando dominio $DOM_DEL..."
+        echo "Eliminando ÚNICAMENTE $DOM_DEL..."
         
-        # --- CAMBIO: Borrado de bloque exacto (Evita borrar otros) ---
-        # El comando busca la línea que EMPIEZA exactamente con zone "dominio"
+        # El comando clave: ^ busca que la línea empiece exactamente con zone "nombre"
         sudo sed -i "/^zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
-        
-        # Borrar el archivo físico de zona
         sudo rm -f "/etc/bind/db.$DOM_DEL"
         
-	limpiar_zonas_basura
+        limpiar_zonas_basura
         sudo systemctl restart bind9
-        echo -e "\e[32m[OK] Dominio $DOM_DEL eliminado correctamente.\e[0m"
+        echo "Dominio $DOM_DEL eliminado. Los demás siguen intactos."
     else
-        echo -e "\e[31m[ERROR] El dominio '$DOM_DEL' no existe en la configuración.\e[0m"
+        echo "El dominio $DOM_DEL no existe."
     fi
-    read -p "Presiona [Enter] para continuar..."
+    read -p "Presiona [Enter]..."
 }
 check_status() {
     clear
@@ -166,11 +161,7 @@ check_status() {
     read -p "Presiona [Enter] para volver al menú..."
 }
 limpiar_zonas_basura() {
-    # Borra cualquier bloque que tenga comillas vacías: zone "" { ... };
-    sudo sed -i '/zone ""/,/};/d' /etc/bind/named.conf.local
-    
-    # Borra líneas que se hayan quedado a medias o archivos db vacíos
-    sudo sed -i '/zone " "/,/};/d' /etc/bind/named.conf.local
+	sudo sed -i '/zone ""/,/};/d' /etc/bind/named.conf.local
 }
 # --- MENÚ ---
 while true; do
