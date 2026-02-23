@@ -149,7 +149,7 @@ while ($true) {
     Write-Host "3. Configurar DHCP     4. Anadir Dominio"
     Write-Host "5. Eliminar Dominio    6. Listar Dominios"
     Write-Host "7. Check Status        8. Ver Red"
-    Write-Host "9. Salir"
+    Write-Host "9. Cls		       10. Salir"
     
     $op = Read-Host "Seleccione"
     switch ($op) {
