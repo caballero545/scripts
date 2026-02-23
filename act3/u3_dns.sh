@@ -3,8 +3,6 @@
 IP_FIJA=""
 INTERFACE="enp0s8"
 SEGMENTO=""
-OCT_SRV=0
-
 # --- 1. INSTALACIÓN DE INFRAESTRUCTURA ---
 instalar_servicios() {
     echo "--- Instalando ISC-DHCP-SERVER y BIND9 ---"
@@ -13,7 +11,6 @@ instalar_servicios() {
     echo "Servicios instalados correctamente."
     read -p "Presiona [r] para volver..."
 }
-
 # --- 2. IP FIJA (DNS, SERVER Y DOMINIOS) ---
 establecer_ip_fija() {
     echo "--- Configurar IP Fija y Activar DNS ---"
@@ -21,7 +18,6 @@ establecer_ip_fija() {
         read -p "Ingrese la IP Fija (ej. 11.11.11.2) o [r]: " IP_ING
         [[ "$IP_ING" == "r" ]] && return
         
-        # VALIDACIÓN: Formato IP estricto
         if [[ $IP_ING =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
             IP_FIJA=$IP_ING
             SEGMENTO=$(echo $IP_FIJA | cut -d'.' -f1-3)
@@ -31,61 +27,37 @@ establecer_ip_fija() {
             sudo ip addr add $IP_FIJA/24 dev $INTERFACE
             sudo ip link set $INTERFACE up
             
+            # --- CURAR Y ACTIVAR DNS AQUÍ ---
             limpiar_zonas_basura
             sudo systemctl restart bind9
             echo "IP establecida y DNS reiniciado."
             break
-        else 
-            echo "ERROR: Formato de IP inválido. Solo números y puntos."
-        fi
+        else echo "IP inválida."; fi
     done
 }
-
 # --- 3. CONFIGURAR DHCP ---
 config_dhcp() {
     [[ -z "$IP_FIJA" ]] && { echo "ERROR: Primero establece la IP Fija (Opción 2)."; read -p "Enter..."; return; }
     
     GATEWAY="${SEGMENTO}.1"
-    MIN_INI=$((OCT_SRV + 1))
+    MIN_INI=$((OCT_SRV + 1)) # Validación: IP inicial >= IP_SRV + 1
     
     echo "--- Rango DHCP (Gateway: $GATEWAY) ---"
-    
-    # VALIDACIÓN: IP Inicial (Rango y Formato)
     while true; do
         read -p "IP Inicial (Mínimo $SEGMENTO.$MIN_INI) o [r]: " IP_INI
         [[ "$IP_INI" == "r" ]] && return
-        if [[ $IP_INI =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-            OCT_INI=$(echo $IP_INI | cut -d'.' -f4)
-            if [[ "$(echo $IP_INI | cut -d'.' -f1-3)" == "$SEGMENTO" && $OCT_INI -ge $MIN_INI ]]; then
-                break
-            fi
-        fi
-        echo "Error: La IP inicial debe ser mínimo $SEGMENTO.$MIN_INI y del mismo segmento."
-    done
-
-    # VALIDACIÓN: IP Final (Debe ser mayor a la inicial)
-    while true; do
-        read -p "IP Final (ej. $SEGMENTO.254): " IP_FIN
-        if [[ $IP_FIN =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-            OCT_FIN=$(echo $IP_FIN | cut -d'.' -f4)
-            if [[ $OCT_FIN -gt $OCT_INI && $OCT_FIN -le 254 ]]; then
-                break
-            fi
-        fi
-        echo "Error: La IP final debe ser mayor a $IP_INI y no exceder .254."
-    done
-
-    # VALIDACIÓN: Tiempo de concesión (Solo números positivos)
-    while true; do
-        read -p "Lease time en segundos (mínimo 60): " LEASE
-        if [[ "$LEASE" =~ ^[0-9]+$ ]] && [ "$LEASE" -ge 60 ]; then
+        OCT_INI=$(echo $IP_INI | cut -d'.' -f4)
+        if [[ "$(echo $IP_INI | cut -d'.' -f1-3)" == "$SEGMENTO" && $OCT_INI -ge $MIN_INI ]]; then
             break
         else
-            echo "Error: Ingrese un número positivo de segundos (mínimo 60)."
+            echo "Error: La IP inicial debe ser mínimo $SEGMENTO.$MIN_INI."
         fi
     done
 
-    # Mantenemos tus comandos intactos de configuración
+    read -p "IP Final (ej. $SEGMENTO.254): " IP_FIN
+    read -p "Lease time (seg): " LEASE
+
+    # Configuración de archivos
     sudo sed -i "s/INTERFACESv4=\".*\"/INTERFACESv4=\"$INTERFACE\"/" /etc/default/isc-dhcp-server
     sudo bash -c "cat > /etc/dhcp/dhcpd.conf" <<EOF
 default-lease-time $LEASE;
@@ -98,26 +70,20 @@ subnet ${SEGMENTO}.0 netmask 255.255.255.0 {
 }
 EOF
     sudo systemctl restart isc-dhcp-server
-    echo "¡DHCP Activo! Rango: $IP_INI - $IP_FIN."
+    echo "¡DHCP Activo! Gateway .1 y DNS en $IP_FIJA."
     read -p "Enter..."
 }
-
 # --- 4. GESTIÓN DE DOMINIOS DNS ---
 add_dominio() {
     [[ -z "$IP_FIJA" ]] && { echo "Error: IP Fija requerida."; return; }
+    
+    # Primero: Limpiamos cualquier error previo
     limpiar_zonas_basura
 
-    # VALIDACIÓN: Nombre de dominio (Sin caracteres raros)
-    while true; do
-        read -p "Nombre del dominio o [r]: " DOM
-        [[ "$DOM" == "r" ]] && return
-        if [[ "$DOM" =~ ^[a-zA-Z0-9][-a-zA-Z0-9.]*\.[a-zA-Z]{2,}$ ]]; then
-            break
-        else
-            echo "Error: Nombre de dominio inválido (ej: aprobar.com). Sin @, # o $."
-        fi
-    done
+    read -p "Nombre del dominio o [r]: " DOM
+    [[ "$DOM" == "r" || -z "$DOM" ]] && return
 
+    # Creamos la zona (esto ya lo tienes)
     ZONE_FILE="/etc/bind/db.$DOM"
     sudo bash -c "cat > $ZONE_FILE" <<EOF
 \$TTL 604800
@@ -127,36 +93,36 @@ ns IN A $IP_FIJA
 @  IN A $IP_FIJA
 EOF
 
+    # Añadimos la zona al config
+    limpiar_zonas_basura
     sudo bash -c "echo 'zone \"$DOM\" { type master; file \"$ZONE_FILE\"; };' >> /etc/bind/named.conf.local"
     
+    # Reinicio con validación
     if sudo named-checkconf; then
         sudo systemctl restart bind9
-        echo "Dominio $DOM creado correctamente."
+        echo "Dominio $DOM creado y DNS levantado."
     else
-        echo "Error detectado. Limpiando..."
+        echo "Error detectado. Limpiando configuración..."
         limpiar_zonas_basura
         sudo systemctl restart bind9
     fi
     read -p "Presiona Enter..."
 }
-# --- (El resto de funciones se mantienen iguales) ---
 del_dominio() {
     read -p "Ingrese el nombre EXACTO del dominio a borrar: " DOM_DEL
     [[ -z "$DOM_DEL" ]] && return
 
-    # REGRESO A TU LÓGICA ORIGINAL PERO CON ANCLAJE ^
-    # El "^zone" asegura que solo borre la línea que EMPIEZA con ese nombre exacto.
+    # Verificamos si existe antes de hacer nada
     if grep -q "zone \"$DOM_DEL\"" /etc/bind/named.conf.local; then
         echo "Eliminando ÚNICAMENTE $DOM_DEL..."
         
-        # EL COMANDO SEGURO:
-        # Usamos comillas dobles y el nombre exacto para que no confunda "bola" con "cebola"
-        sudo sed -i "/zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
+        # El comando clave: ^ busca que la línea empiece exactamente con zone "nombre"
+        sudo sed -i "/^zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
         sudo rm -f "/etc/bind/db.$DOM_DEL"
         
         limpiar_zonas_basura
         sudo systemctl restart bind9
-        echo "Dominio $DOM_DEL eliminado con éxito."
+        echo "Dominio $DOM_DEL eliminado. Los demás siguen intactos."
     else
         echo "El dominio $DOM_DEL no existe."
     fi
@@ -164,18 +130,40 @@ del_dominio() {
 }
 check_status() {
     clear
-    echo "=== ESTADO DETALLADO ==="
-    echo -n "DHCP: "; systemctl is-active --quiet isc-dhcp-server && echo "ACTIVO" || echo "CAÍDO"
-    echo -n "DNS: "; systemctl is-active --quiet bind9 && echo "ACTIVO" || echo "CAÍDO"
-    echo -e "\nDominios en memoria:"
-    sudo named-checkconf -z | grep "loaded"
-    read -p "Enter..."
+    echo "=========================================="
+    echo "       ESTADO DETALLADO DEL SISTEMA"
+    echo "=========================================="
+    
+    # 1. Estado de los Procesos
+    echo -n "Servicio DHCP: "
+    systemctl is-active --quiet isc-dhcp-server && echo -e "\e[32mACTIVO\e[0m" || echo -e "\e[31mCAÍDO\e[0m"
+    
+    echo -n "Servicio DNS (BIND9): "
+    systemctl is-active --quiet bind9 && echo -e "\e[32mACTIVO\e[0m" || echo -e "\e[31mCAÍDO\e[0m"
+    
+    # 2. Verificación de Zonas (Carga real)
+    echo -e "\n--- Dominios Cargados en Memoria ---"
+    ZONAS_LOADED=$(sudo named-checkconf -z | grep "loaded")
+    
+    if [ -z "$ZONAS_LOADED" ]; then
+        echo -e "\e[31m[!] No hay dominios cargados. Posibles errores de sintaxis:\e[0m"
+        # Mostramos el error real sin filtrar para que veas qué falló
+        sudo named-checkconf -z
+    else
+        echo -e "\e[32m$ZONAS_LOADED\e[0m"
+    fi
+    
+    # 3. IP Fija Actual
+    echo -e "\n--- Configuración de Red ---"
+    echo "IP Fija del Servidor: ${IP_FIJA:-No configurada}"
+    
+    echo "=========================================="
+    read -p "Presiona [Enter] para volver al menú..."
 }
-
 limpiar_zonas_basura() {
-    sudo sed -i '/zone ""/,/};/d' /etc/bind/named.conf.local
+	sudo sed -i '/zone ""/,/};/d' /etc/bind/named.conf.local
 }
-
+# --- MENÚ ---
 while true; do
     clear
     echo "IP SRV (DNS/DOM): ${IP_FIJA:-PENDIENTE}"
