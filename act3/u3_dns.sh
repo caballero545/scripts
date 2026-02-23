@@ -87,15 +87,24 @@ create_domain() {
     read -p "Nombre del dominio (ej. google.com) o 'm': " DOMINIO
     [[ "$DOMINIO" == "m" ]] && return
     ZONE_FILE="/etc/bind/db.$DOMINIO"
+    
+    # Generamos el archivo con el formato exacto que pide BIND9
     sudo bash -c "cat > $ZONE_FILE" <<EOF
 \$TTL 604800
-@ IN  SOA ns.$DOMINIO. admin.$DOMINIO. ( 1 604800 86400 2419200 604800 )
-@ IN  NS  ns.$DOMINIO.
-ns IN  A   $IP_FIJA
+@ IN SOA ns.$DOMINIO. admin.$DOMINIO. ( 1 604800 86400 2419200 604800 )
+@ IN NS ns.$DOMINIO.
+ns IN A $IP_FIJA
 EOF
+
+    # Agregamos la zona al archivo de configuración local
     sudo bash -c "echo 'zone \"$DOMINIO\" { type master; file \"$ZONE_FILE\"; };' >> /etc/bind/named.conf.local"
+    
+    # Aplicamos permisos y reiniciamos
+    sudo chown bind:bind "$ZONE_FILE"
+    sudo chmod 644 "$ZONE_FILE"
     sudo systemctl restart bind9
-    echo "Dominio $DOMINIO creado."
+    
+    echo "Dominio $DOMINIO creado y permisos aplicados."
     read -p "Presiona [Enter] para volver..."
 }
 list_domains() {
