@@ -124,7 +124,7 @@ list_domains() {
 }
 remove_domain() {
     while true; do
-        read -p "Ingrese el nombre EXACTO del dominio a Eliminar o 'm': " DOM_DEL
+        read -p "Ingrese el nombre EXACTO del dominio a Eliminar (ej. aprobados.com) o 'm': " DOM_DEL
         [[ "$DOM_DEL" == "m" ]] && return
         
         if [[ -z "$DOM_DEL" ]]; then
@@ -134,7 +134,7 @@ remove_domain() {
         fi
     done
     
-    # Verificación de existencia EXACTA
+    # Verificación de existencia EXACTA para evitar errores de sintaxis
     if ! grep -q "zone \"$DOM_DEL\"" /etc/bind/named.conf.local; then
         echo -e "\e[31mError: El dominio '$DOM_DEL' no existe en el servidor.\e[0m"
         read -p "Presiona [Enter] para volver..."
@@ -143,17 +143,24 @@ remove_domain() {
 
     echo "Eliminando ÚNICAMENTE el bloque de: $DOM_DEL..."
     
-    # LA CLAVE: Usamos ^ para el inicio de línea y comillas exactas para no borrar otros parecidos
-    sudo sed -i "/zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
+    # LA CLAVE: Usamos '^zone \"$DOM_DEL\"' para que busque el inicio exacto de la línea
+    # Esto evita que borrar "aprobado.com" afecte a "reaprobado.com"
+    sudo sed -i "/^zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
     
-    # Borramos su archivo de zona correspondiente
+    # Borramos su archivo de base de datos física
     sudo rm -f "/etc/bind/db.$DOM_DEL"
     
-    # Limpieza total para que BIND9 reaccione de inmediato
-    sudo rndc flush
+    # Forzamos la limpieza de memoria y reinicio limpio
+    sudo rndc flush 2>/dev/null
     sudo systemctl restart bind9
     
-    echo "Dominio $DOM_DEL eliminado. Los demás dominios siguen vivos."
+    # Verificación automática: Si el servicio falló al borrar, avisamos de inmediato
+    if systemctl is-active --quiet bind9; then
+        echo "Dominio $DOM_DEL eliminado. El servicio DNS sigue estable."
+    else
+        echo -e "\e[31mADVERTENCIA: El servicio DNS falló tras el borrado. Revisa named.conf.local\e[0m"
+    fi
+    
     read -p "Presiona [Enter] para volver..."
 }
 monitor_clients() {
