@@ -161,7 +161,7 @@ while ($true) {
         "6" { Listar-Dominios }
         "7" { Check-Status }
         "8" { Ver-Red }
-	"9" { cls }
+	"9" { cls; Write-Host "Pantalla limpia."; Start-Sleep -Seconds 1 }
         "10" { exit }
     }
 }
