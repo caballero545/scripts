@@ -161,6 +161,7 @@ while ($true) {
         "6" { Listar-Dominios }
         "7" { Check-Status }
         "8" { Ver-Red }
-        "9" { exit }
+	"9" { cls }
+        "10" { exit }
     }
 }
