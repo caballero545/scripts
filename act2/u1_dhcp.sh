@@ -104,7 +104,7 @@ ver_red() {
 while true; do
     clear
     echo "------------------------------------------"
-    echo "      MENU DHCP LINUX (ISC-SERVER)"
+    echo "      MENU DHCP LINUX (SERVER)"
     echo "------------------------------------------"
     echo "1. Instalar/Actualizar Servidor"
     echo "2. Configurar y Activar Rango"
