@@ -84,11 +84,24 @@ EOF
 }
 
 create_domain() {
-    read -p "Nombre del dominio (ej. aprobados.com) o 'm': " DOMINIO
-    [[ "$DOMINIO" == "m" ]] && return
+    while true; do
+        read -p "Nombre del dominio (ej. aprobados.com) o 'm': " DOMINIO
+        [[ "$DOMINIO" == "m" ]] && return
+        
+        # Validación: ¿Está vacío?
+        if [[ -z "$DOMINIO" ]]; then
+            echo -e "\e[31mError: El nombre del dominio no puede estar vacío.\e[0m"
+        # Validación: ¿Tiene un formato mínimo? (letras.letras)
+        elif [[ ! "$DOMINIO" =~ \. ]]; then
+            echo -e "\e[31mError: Formato inválido. Debe incluir un punto (ej. dominio.com).\e[0m"
+        else
+            break
+        fi
+    done
+
     ZONE_FILE="/etc/bind/db.$DOMINIO"
     
-    # FORMATO CORREGIDO PARA EVITAR SYNTAX ERROR
+    # Formato limpio para BIND9
     sudo bash -c "cat > $ZONE_FILE" <<EOF
 \$TTL 604800
 @ IN SOA ns.$DOMINIO. admin.$DOMINIO. ( 1 604800 86400 2419200 604800 )
@@ -100,7 +113,7 @@ EOF
     sudo chown bind:bind "$ZONE_FILE"
     sudo chmod 644 "$ZONE_FILE"
     sudo systemctl restart bind9
-    echo "Dominio $DOMINIO creado correctamente."
+    echo "Dominio $DOMINIO creado con éxito."
     read -p "Presiona [Enter] para volver..."
 }
 
@@ -110,28 +123,31 @@ list_domains() {
     read -p "Presiona [Enter] para volver..."
 }
 remove_domain() {
-    read -p "Ingrese el nombre exacto del dominio a Eliminar: " DOM_DEL
-    [[ "$DOM_DEL" == "m" ]] && return
+    while true; do
+        read -p "Ingrese el nombre del dominio a Eliminar o 'm': " DOM_DEL
+        [[ "$DOM_DEL" == "m" ]] && return
+        
+        if [[ -z "$DOM_DEL" ]]; then
+            echo -e "\e[31mError: No puedes dejar el nombre vacío.\e[0m"
+        else
+            break
+        fi
+    done
     
-    # Verificamos si existe antes de intentar borrar
+    # Validación de existencia
     if ! grep -q "zone \"$DOM_DEL\"" /etc/bind/named.conf.local; then
-        echo -e "\e[31mError: El dominio '$DOM_DEL' no existe.\e[0m"
+        echo -e "\e[31mError: El dominio '$DOM_DEL' no existe en el servidor.\e[0m"
         read -p "Presiona [Enter] para volver..."
         return
     fi
 
-    echo "Eliminando $DOM_DEL con precisión quirúrgica..."
-    # Borra la línea que contiene exactamente el nombre del dominio y la línea siguiente (donde está el };)
+    echo "Eliminando $DOM_DEL..."
     sudo sed -i "/zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
-    
-    # Borrar el archivo de base de datos de ese dominio
     sudo rm -f "/etc/bind/db.$DOM_DEL"
-    
-    # REINICIO CRUCIAL: Para que BIND9 olvide el dominio de inmediato
     sudo rndc flush
     sudo systemctl restart bind9
     
-    echo "Dominio $DOM_DEL eliminado. Los demás siguen intactos."
+    echo "Dominio $DOM_DEL eliminado correctamente."
     read -p "Presiona [Enter] para volver..."
 }
 monitor_clients() {
