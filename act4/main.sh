@@ -7,36 +7,15 @@ IP_FIJA=""
 
 while true; do
     clear
-    echo "ADMINISTRACIÓN REMOTA - IP SRV: ${IP_FIJA:-PENDIENTE}"
-    echo "1. Instalar Infraestructura   2. Configurar IP Fija"
-    echo "3. Añadir Dominio             4. Eliminar Dominio"
-    echo "5. Ver Status                 6. Salir"
-    read -p "Opción: " op
-
+    echo "IP SRV (DNS/DOM): ${IP_FIJA:-PENDIENTE}"
+    echo "1. Instalar DHCP/DNS   2. IP Fija (Server/DNS)"
+    echo "3. Configurar DHCP     4. Añadir Dominio"
+    echo "5. Eliminar Dominio    6. Listar Dominios"
+    echo "7. Check Status        8. Ver Red        9. Salir"
+    read -p "Seleccione: " op
     case $op in
-        1) instalar_servicios ;;
-        2) 
-            RES=$(establecer_ip_fija "$INTERFACE")
-            [[ "$RES" != "ERROR" ]] && IP_FIJA=$RES ;;
-        3)
-            [[ -z "$IP_FIJA" ]] && echo "Primero fija la IP" && sleep 2 && continue
-            read -p "Nombre dominio: " DOM
-            if validar_y_añadir_dns "$DOM" "$IP_FIJA"; then
-                sudo systemctl restart bind9
-                echo "Dominio creado."
-            else
-                echo "Error: El dominio ya existe."
-            fi
-            read ;;
-        4)
-            read -p "Nombre a borrar: " DOM
-            borrar_dominio_quirurgico "$DOM"
-            sudo systemctl restart bind9
-            echo "Eliminado."
-            read ;;
-        5) 
-            sudo named-checkconf -z | grep "loaded"
-            read ;;
-        6) exit 0 ;;
+        1) instalar_servicios ;; 2) establecer_ip_fija ;; 3) config_dhcp ;;
+        4) add_dominio ;; 5) del_dominio ;; 6) grep "zone" /etc/bind/named.conf.local | cut -d'"' -f2; read -p "..." ;;
+        7) check_status ;; 8) ip addr; read -p "..." ;; 9) exit 0 ;;
     esac
 done
