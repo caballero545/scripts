@@ -15,18 +15,16 @@ instalar_servicios() {
 # Esta función ahora devuelve los datos para que el MAIN los guarde
 establecer_ip_fija_logic() {
     local interface="enp0s8"
-    read -p "Ingrese la IP Fija (ej. 77.77.77.7) o [r]: " IP_ING
-    if [[ "$IP_ING" == "r" ]]; then echo "CANCEL"; return; fi
-    
+    read -p "Ingrese IP Fija: " IP_ING
     if [[ $IP_ING =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
         sudo ip addr flush dev $interface
         sudo ip addr add $IP_ING/24 dev $interface
         sudo ip link set $interface up
-        sudo sed -i '/zone ""/,/};/d' /etc/bind/named.conf.local # Limpiar basura
-        sudo systemctl restart bind9
-        echo "$IP_ING" # IMPORTANTE: Esto le dice al main la IP
+        # Limpiamos zonas vacías que causan errores al arrancar
+        sudo sed -i '/zone ""/,/};/d' /etc/bind/named.conf.local
+        echo "$IP_ING"
     else
-        echo "INVALID"
+        echo "ERROR"
     fi
 }
 
@@ -63,8 +61,13 @@ EOF
 add_dominio_logic() {
     local dom=$1
     local ip_fija=$2
-    local zone_file="/etc/bind/db.$dom"
+    
+    # VALIDACIÓN: Checar si ya existe para no duplicar basura
+    if grep -q "zone \"$dom\"" /etc/bind/named.conf.local; then
+        return 1 # Ya existe, error.
+    fi
 
+    local zone_file="/etc/bind/db.$dom"
     sudo bash -c "cat > $zone_file" <<EOF
 \$TTL 604800
 @ IN SOA ns.$dom. admin.$dom. ( 1 604800 86400 2419200 604800 )
@@ -73,12 +76,28 @@ ns IN A $ip_fija
 @  IN A $ip_fija
 EOF
     sudo bash -c "echo 'zone \"$dom\" { type master; file \"$zone_file\"; };' >> /etc/bind/named.conf.local"
+    
+    # VALIDACIÓN DE SINTAXIS
+    if ! sudo named-checkconf; then
+        sudo sed -i "/zone \"$dom\"/d" /etc/bind/named.conf.local
+        return 2 # Fallo de sintaxis
+    fi
     sudo systemctl restart bind9
+    return 0
 }
 
 del_dominio_logic() {
     local dom=$1
+    # VALIDACIÓN: Checar si existe antes de intentar borrar
+    if ! grep -q "zone \"$dom\"" /etc/bind/named.conf.local; then
+        return 1 # No existe
+    fi
+
+    echo "Borrando dominio: $dom..."
     sudo sed -i "/zone \"$dom\"/d" /etc/bind/named.conf.local
     sudo rm -f "/etc/bind/db.$dom"
+    
+    # REFRESCAR Y VALIDAR
     sudo systemctl restart bind9
+    return 0
 }
