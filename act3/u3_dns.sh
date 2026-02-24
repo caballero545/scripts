@@ -112,21 +112,23 @@ del_dominio() {
     read -p "Ingrese el nombre EXACTO del dominio a borrar: " DOM_DEL
     [[ -z "$DOM_DEL" ]] && return
 
-    # Verificamos si existe antes de hacer nada
+    # Verificamos si existe el dominio en el archivo
     if grep -q "zone \"$DOM_DEL\"" /etc/bind/named.conf.local; then
-        echo "Eliminando ÚNICAMENTE $DOM_DEL..."
+        echo "Borrando ÚNICAMENTE: $DOM_DEL..."
+    
+        LINE_NUM=$(grep -n "zone \"$DOM_DEL\"" /etc/bind/named.conf.local | head -n 1 | cut -d: -f1)
+        sudo sed -i "${LINE_NUM},/};/d" /etc/bind/named.conf.local
         
-        # El comando clave: ^ busca que la línea empiece exactamente con zone "nombre"
-        sudo sed -i "/^zone \"$DOM_DEL\"/,/};/d" /etc/bind/named.conf.local
+        # 3. Borramos el archivo de base de datos
         sudo rm -f "/etc/bind/db.$DOM_DEL"
         
         limpiar_zonas_basura
         sudo systemctl restart bind9
-        echo "Dominio $DOM_DEL eliminado. Los demás siguen intactos."
+        echo "Éxito: Dominio '$DOM_DEL' eliminado. Los demás están a salvo."
     else
-        echo "El dominio $DOM_DEL no existe."
+        echo "El dominio '$DOM_DEL' no existe en la configuración."
     fi
-    read -p "Presiona [Enter]..."
+    read -p "Presiona [Enter] para finalizar..."
 }
 check_status() {
     clear
