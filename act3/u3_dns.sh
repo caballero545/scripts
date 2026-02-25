@@ -2,43 +2,33 @@
 # =====================================================================
 # SCRIPT DE ADMINISTRACIÓN DE RED (VERSIÓN FINAL PRO)
 # =====================================================================
-
 IP_FIJA=""
 INTERFACE="enp0s8"
 SEGMENTO=""
-
 # --- FUNCIONES DE VALIDACIÓN ---
-
 validar_ip_servidor() {
     local ip=$1
     if [[ ! $ip =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then return 1; fi
-    # Prohibidas: 0.0.0.0, 255.255.255.255, 127.0.0.0, 127.0.0.1
     if [[ "$ip" == "0.0.0.0" ]] || [[ "$ip" == "255.255.255.255" ]] || \
        [[ "$ip" == "127.0.0.0" ]] || [[ "$ip" == "127.0.0.1" ]]; then
-        echo -e "\e[31m[ERROR] IP $ip prohibida para el servidor.\e[0m"
-        return 1
+        echo -e "\e[31m[ERROR] IP prohibida para el servidor.\e[0m"; return 1
     fi
     return 0
 }
-
 validar_ip_dns() {
     local ip=$1
     [[ -z "$ip" ]] && return 0
     if [[ ! $ip =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then return 1; fi
-    # Prohibidas para DNS: 255.255.255.255, 1.0.0.0
     if [[ "$ip" == "255.255.255.255" ]] || [[ "$ip" == "1.0.0.0" ]]; then
-        echo -e "\e[31m[ERROR] IP $ip prohibida para DNS.\e[0m"
-        return 1
+        echo -e "\e[31m[ERROR] IP prohibida para DNS.\e[0m"; return 1
     fi
     return 0
 }
-
 validar_mask() { [[ $1 =~ ^(255|254|252|248|240|224|192|128|0)\.(255|254|252|248|240|224|192|128|0)\.(255|254|252|248|240|224|192|128|0)\.(255|254|252|248|240|224|192|128|0)$ ]]; }
 
 validar_tiempo() { [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -gt 0 ]; }
 
 limpiar_zonas_basura() { sudo sed -i '/zone ""/,/};/d' /etc/bind/named.conf.local; }
-
 # --- 1. INSTALACIÓN ---
 instalar_servicios() {
     echo -e "\n[+] Instalando DHCP y DNS..."
@@ -49,55 +39,57 @@ instalar_servicios() {
 
 # --- 2. CONFIGURACIÓN DE RED / DHCP (Desplazamiento +1) ---
 configurar_sistema_principal() {
-    echo -e "\n--- CONFIGURACIÓN DE RED Y RANGO DHCP ---"
+    echo -e "\n--- CONFIGURACIÓN DE RED (RANGO DESPLAZADO +1) ---"
     
     while true; do
-        read -p "Ingrese inicio de rango (ej. 192.168.100.20): " R_INI
+        read -p "Inicio de rango (ej. 10.10.10.0): " R_INI
         if validar_ip_servidor "$R_INI"; then break; fi
     done
 
     while true; do
-        read -p "Ingrese fin de rango (ej. 192.168.100.30): " R_FIN
+        read -p "Fin de rango (ej. 10.10.10.10): " R_FIN
         if validar_ip_servidor "$R_FIN"; then break; fi
     done
 
     IP_FIJA=$R_INI
     SEGMENTO=$(echo $IP_FIJA | cut -d'.' -f1-3)
-    
     OCT_INI=$(echo $R_INI | cut -d'.' -f4)
     OCT_FIN=$(echo $R_FIN | cut -d'.' -f4)
     DHCP_START="${SEGMENTO}.$((OCT_INI + 1))"
     DHCP_END="${SEGMENTO}.$((OCT_FIN + 1))"
 
     while true; do
-        read -p "Máscara de red [Enter para 255.255.255.0]: " MASK
+        read -p "Máscara [Enter para 255.255.255.0]: " MASK
         [[ -z "$MASK" ]] && MASK="255.255.255.0"
         if validar_mask "$MASK"; then break; fi
     done
 
-    read -p "Puerta de enlace (Gateway) [Enter para vacío]: " GW
+    read -p "Gateway [Enter para vacío]: " GW
 
     while true; do
-        read -p "DNS Primario [Enter para vacío]: " DNS_1
+        read -p "DNS Primario [Opcional]: " DNS_1
         if validar_ip_dns "$DNS_1"; then break; fi
     done
 
     while true; do
-        read -p "DNS Secundario [Enter para vacío]: " DNS_2
+        read -p "DNS Secundario [Opcional]: " DNS_2
         if [ -z "$DNS_2" ] || validar_ip_dns "$DNS_2"; then break; fi
     done
 
     while true; do
-        read -p "Tiempo de escucha (segundos): " LEASE
+        read -p "Lease time (segundos): " LEASE
         if validar_tiempo "$LEASE"; then break; fi
     done
 
+    # Aplicar IP a la interfaz
     sudo ip addr flush dev $INTERFACE
     sudo ip addr add $IP_FIJA/24 dev $INTERFACE
     sudo ip link set $INTERFACE up
     
+    # FIX DEL PING: Apuntar el servidor a sí mismo
     echo "nameserver 127.0.0.1" | sudo tee /etc/resolv.conf
 
+    # FIX DE INTERNET: Forwarders para GitHub
     sudo bash -c "cat > /etc/bind/named.conf.options" <<EOF
 options {
     directory "/var/cache/bind";
@@ -108,6 +100,7 @@ options {
 };
 EOF
 
+    # Configurar DHCP
     OPTS_DHCP=""
     [[ -n "$GW" ]] && OPTS_DHCP="${OPTS_DHCP}  option routers $GW;\n"
     if [[ -n "$DNS_1" ]]; then
@@ -128,8 +121,8 @@ EOF
     sudo sed -i "s/INTERFACESv4=\".*\"/INTERFACESv4=\"$INTERFACE\"/" /etc/default/isc-dhcp-server
     limpiar_zonas_basura
     sudo systemctl restart bind9 isc-dhcp-server
-    echo -e "\n[!] Configurado. IP Server: $IP_FIJA | Rango: $DHCP_START - $DHCP_END"
-    read -p "Presiona Enter..."
+    echo -e "\n[!] LISTO. IP Server: $IP_FIJA | Rango DHCP: $DHCP_START - $DHCP_END"
+    read -p "Enter..."
 }
 
 # --- 3. DOMINIOS ---
