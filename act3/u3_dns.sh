@@ -36,9 +36,7 @@ establecer_ip_fija() {
     done
 }
 # --- 3. CONFIGURAR DHCP ---
-config_dhcp() {
-    [[ -z "$IP_FIJA" ]] && { echo "ERROR: Primero establece la IP Fija (Opción 2)."; read -p "Enter..."; return; }
-    
+config_dhcp() {    
     GATEWAY="${SEGMENTO}.1"
     MIN_INI=$((OCT_SRV + 1)) # Validación: IP inicial >= IP_SRV + 1
     
