@@ -144,6 +144,29 @@ EOF
     echo "Dominio '$DOM' añadido."; read -p "Enter..."
 }
 
+eliminar_dominio() {
+    read -p "Ingrese el nombre del dominio a eliminar: " D
+    [[ -z "$D" ]] && return
+
+    # Verificamos si el dominio existe en el archivo de configuración
+    if grep -q "zone \"$D\"" /etc/bind/named.conf.local; then
+        echo -e "\e[33m[!] Eliminando dominio $D...\e[0m"
+        
+        # Elimina la zona del archivo de configuración
+        sudo sed -i "/zone \"$D\"/,/};/d" /etc/bind/named.conf.local
+        
+        # Borra el archivo de zona físico
+        sudo rm -f "/etc/bind/db.$D"
+        
+        # Reinicia para aplicar cambios
+        sudo systemctl restart bind9
+        echo -e "\e[32m[OK] Dominio '$D' eliminado correctamente.\e[0m"
+    else
+        echo -e "\e[31m[ERROR] El dominio '$D' no existe en el sistema.\e[0m"
+    fi
+    read -p "Presione Enter para continuar..."
+}
+
 # --- 6. CHECK STATUS MEJORADO ---
 check_status() {
     clear
@@ -199,7 +222,7 @@ while true; do
         1) instalar_servicios ;;
         2) configurar_sistema_principal ;;
         3) add_dominio ;;
-        4) read -p "Dominio: " D; sudo sed -i "/zone \"$D\"/d" /etc/bind/named.conf.local; sudo systemctl restart bind9; read -p "OK." ;;
+        4) eliminar_dominio ;;
         5) grep "zone" /etc/bind/named.conf.local | cut -d'"' -f2; read -p "..." ;;
         6) check_status ;;
         7) exit 0 ;;
