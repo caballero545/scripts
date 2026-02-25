@@ -127,9 +127,18 @@ EOF
 
 # --- 3. DOMINIOS ---
 add_dominio() {
-    [[ -z "$IP_FIJA" ]] && { echo "Configure la red primero."; sleep 2; return; }
+    [[ -z "$IP_FIJA" ]] && { echo -e "\e[31m[!] Configure la red primero (Opción 2).\e[0m"; sleep 2; return; }
+    
     read -p "Nombre del dominio (ej. reprobo.com): " DOM
     [[ -z "$DOM" ]] && return
+
+    # VALIDACIÓN: ¿Ya existe?
+    if grep -q "zone \"$DOM\"" /etc/bind/named.conf.local; then
+        echo -e "\e[31m[ERROR] El dominio '$DOM' ya existe. Use la opción 4 para eliminarlo primero.\e[0m"
+        read -p "Presione Enter..."
+        return
+    fi
+
     ZONE_FILE="/etc/bind/db.$DOM"
     sudo bash -c "cat > $ZONE_FILE" <<EOF
 \$TTL 604800
@@ -138,10 +147,10 @@ add_dominio() {
 ns IN A $IP_FIJA
 @  IN A $IP_FIJA
 EOF
-    limpiar_zonas_basura
     sudo bash -c "echo 'zone \"$DOM\" { type master; file \"$ZONE_FILE\"; };' >> /etc/bind/named.conf.local"
     sudo systemctl restart bind9
-    echo "Dominio '$DOM' añadido."; read -p "Enter..."
+    echo -e "\e[32m[OK] Dominio '$DOM' creado exitosamente.\e[0m"
+    read -p "Enter..."
 }
 
 eliminar_dominio() {
