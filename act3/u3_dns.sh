@@ -37,20 +37,11 @@ establecer_ip_fija() {
 }
 # --- 3. CONFIGURAR DHCP ---
 config_dhcp() {    
-    GATEWAY="${SEGMENTO}.1"
-    MIN_INI=$((OCT_SRV + 1)) # Validación: IP inicial >= IP_SRV + 1
-    
+    GATEWAY="${SEGMENTO}.1"    
     echo "--- Rango DHCP (Gateway: $GATEWAY) ---"
-    while true; do
         read -p "IP Inicial (Mínimo $SEGMENTO.$MIN_INI) o [r]: " IP_INI
         [[ "$IP_INI" == "r" ]] && return
         OCT_INI=$(echo $IP_INI | cut -d'.' -f4)
-        if [[ "$(echo $IP_INI | cut -d'.' -f1-3)" == "$SEGMENTO" && $OCT_INI -ge $MIN_INI ]]; then
-            break
-        else
-            echo "Error: La IP inicial debe ser mínimo $SEGMENTO.$MIN_INI."
-        fi
-    done
 
     read -p "IP Final (ej. $SEGMENTO.254): " IP_FIN
     read -p "Lease time (seg): " LEASE
