@@ -88,16 +88,41 @@ EOF
 
 del_dominio_logic() {
     local dom=$1
-    # VALIDACIÓN: Checar si existe antes de intentar borrar
+    # AQUÍ ESTÁ EL CAMBIO: Grep verifica si existe antes de borrar
     if ! grep -q "zone \"$dom\"" /etc/bind/named.conf.local; then
-        return 1 # No existe
+        return 1 # Si no existe, manda error al main
     fi
-
-    echo "Borrando dominio: $dom..."
     sudo sed -i "/zone \"$dom\"/d" /etc/bind/named.conf.local
     sudo rm -f "/etc/bind/db.$dom"
-    
-    # REFRESCAR Y VALIDAR
     sudo systemctl restart bind9
     return 0
+}
+check_status_logic() {
+    local ip_actual=$1
+    clear
+    echo "=========================================="
+    echo "      ESTADO DEL SISTEMA (REMOTO)"
+    echo "=========================================="
+    
+    # Verificación de Procesos
+    echo -n "Servicio DHCP: "
+    systemctl is-active --quiet isc-dhcp-server && echo -e "\e[32mACTIVO\e[0m" || echo -e "\e[31mCAÍDO\e[0m"
+    
+    echo -n "Servicio DNS (BIND9): "
+    systemctl is-active --quiet bind9 && echo -e "\e[32mACTIVO\e[0m" || echo -e "\e[31mCAÍDO\e[0m"
+
+    # Verificación de Zonas cargadas
+    echo -e "\n--- Dominios en Memoria ---"
+    local zonas=$(sudo named-checkconf -z | grep "loaded")
+    if [ -z "$zonas" ]; then
+        echo -e "\e[31m[!] No hay dominios activos o hay error de sintaxis.\e[0m"
+    else
+        echo -e "\e[32m$zonas\e[0m"
+    fi
+
+    echo -e "\n--- Configuración de Red ---"
+    echo "IP Fija configurada en Script: ${ip_actual:-Ninguna}"
+    ip addr show enp0s8 | grep "inet " || echo "Interfaz enp0s8 sin IP activa."
+    echo "=========================================="
+    read -p "Presiona Enter para volver..."
 }
