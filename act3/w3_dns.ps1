@@ -119,7 +119,7 @@ function Add-Dominio {
     if ($DOM -eq "") { return }
 
     if (Get-DnsServerZone -Name $DOM -ErrorAction SilentlyContinue) {
-        Write-Host "[ERROR] El dominio ya existe." -ForegroundColor Red
+        Write-Host "ERROR El dominio ya existe." -ForegroundColor Red
     } else {
         Add-DnsServerPrimaryZone -Name $DOM -ZoneFile "$DOM.dns"
         Add-DnsServerResourceRecordA -Name "@" -IPv4Address $global:IP_FIJA -ZoneName $DOM
