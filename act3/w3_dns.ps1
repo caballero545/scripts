@@ -1,11 +1,11 @@
 # =====================================================================
-# SCRIPT DE ADMINISTRACIÓN DE RED - MIGRACIÓN LINUX A WINDOWS
+# SCRIPT DE ADMINISTRACIÓN DE RED - TRADUCCIÓN FIEL DE LINUX A WINDOWS
 # =====================================================================
 
 $global:IP_FIJA = ""
 $global:SEGMENTO = ""
 
-# --- FUNCIONES DE VALIDACIÓN (Réplica de Linux) ---
+# --- FUNCIONES DE VALIDACIÓN ---
 
 function Test-ValidarIP {
     param([string]$ip)
@@ -27,11 +27,11 @@ function Test-ValidarMask {
 # --- 1. INSTALACIÓN ---
 function Instalar-Servicios {
     Clear-Host
-    Write-Host "[+] Instalando DHCP y DNS (Windows Features)..." -ForegroundColor Cyan
+    Write-Host "[+] Instalando DHCP y DNS..." -ForegroundColor Cyan
     Install-WindowsFeature -Name DHCP, DNS -IncludeManagementTools
     Set-Service -Name DHCPServer, DNS -StartupType Automatic
-    Write-Host "[OK] Servicios instalados y habilitados." -ForegroundColor Green
-    Read-Host "Enter para continuar..."
+    Write-Host "[OK] Servicios instalados. Enter..." -ForegroundColor Green
+    Read-Host
 }
 
 # --- 2. CONFIGURACIÓN DE RED / DHCP (Desplazamiento +1) ---
@@ -39,10 +39,10 @@ function Configurar-Sistema-Principal {
     Clear-Host
     Write-Host "--- CONFIGURACIÓN DE RED (RANGO DESPLAZADO +1) ---" -ForegroundColor Cyan
 
-    # Detección de Interfaz
     $iface = (Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1).Name
     if (-not $iface) { $iface = "Ethernet 2" }
 
+    # Rango inicial/final
     while ($true) {
         $R_INI = Read-Host "Inicio de rango (ej. 10.10.10.0)"
         if (Test-ValidarIP $R_INI) { break }
@@ -52,7 +52,7 @@ function Configurar-Sistema-Principal {
         if (Test-ValidarIP $R_FIN) { break }
     }
 
-    # Lógica de Segmento y Desplazamiento
+    # Lógica de IPs (Equivalente a cut -d'.' en Linux)
     $global:IP_FIJA = $R_INI
     $parts = $R_INI.Split('.')
     $global:SEGMENTO = "$($parts[0]).$($parts[1]).$($parts[2])"
@@ -72,20 +72,21 @@ function Configurar-Sistema-Principal {
     $DNS_1 = Read-Host "DNS Primario [Opcional]"
     
     $LEASE_SEC = Read-Host "Lease time (segundos)"
-    $LEASE = [TimeSpan]::FromSeconds([int]$LEASE_SEC)
+    [int]$LEASE_INT = $LEASE_SEC
+    $LEASE = [TimeSpan]::FromSeconds($LEASE_INT)
 
-    # Aplicar IP al Servidor
-    Write-Host "[!] Aplicando IP Fija $global:IP_FIJA..." -ForegroundColor Yellow
+    # Aplicar IP (Equivalente a ip addr add en Linux)
+    Write-Host "[!] Aplicando IP al servidor..." -ForegroundColor Yellow
     Remove-NetIPAddress -InterfaceAlias $iface -AddressFamily IPv4 -Confirm:$false -ErrorAction SilentlyContinue
     New-NetIPAddress -InterfaceAlias $iface -IPAddress $global:IP_FIJA -PrefixLength 24 -ErrorAction SilentlyContinue
     
-    # FIX: Apuntar el servidor a sí mismo
+    # FIX: nameserver 127.0.0.1
     Set-DnsClientServerAddress -InterfaceAlias $iface -ServerAddresses ("127.0.0.1")
 
-    # FIX DE INTERNET: Forwarders
+    # FIX DE INTERNET: Forwarders (Equivalente a /etc/bind/named.conf.options)
     Add-DnsServerForwarder -IPAddress "8.8.8.8","8.8.4.4" -Force -ErrorAction SilentlyContinue
 
-    # Configurar DHCP
+    # Configurar DHCP (Equivalente a dhcpd.conf)
     Remove-DhcpServerv4Scope -ScopeId "$global:SEGMENTO.0" -Force -ErrorAction SilentlyContinue
     Add-DhcpServerv4Scope -Name "Red_Examen" -StartRange $DHCP_START -EndRange $DHCP_END -SubnetMask $MASK -LeaseDuration $LEASE
     
@@ -108,7 +109,7 @@ function Add-Dominio {
         Add-DnsServerPrimaryZone -Name $DOM -ZoneFile "$DOM.dns"
         Add-DnsServerResourceRecordA -Name "@" -IPv4Address $global:IP_FIJA -ZoneName $DOM
         Add-DnsServerResourceRecordA -Name "ns" -IPv4Address $global:IP_FIJA -ZoneName $DOM
-        Write-Host "[OK] Dominio $DOM creado." -ForegroundColor Green
+        Write-Host "[OK] Dominio creado." -ForegroundColor Green
     }
     Read-Host "Enter..."
 }
@@ -129,23 +130,16 @@ function Eliminar-Dominio {
 # --- 6. STATUS DETALLADO ---
 function Check-Status {
     cls
-    Write-Host "===============================================" -ForegroundColor Yellow
-    Write-Host "          ESTADO GLOBAL DEL SISTEMA" -ForegroundColor Yellow
-    Write-Host "===============================================" -ForegroundColor Yellow
-    
+    Write-Host "==============================================="
+    Write-Host "          ESTADO GLOBAL DEL SISTEMA"
+    Write-Host "==============================================="
     Write-Host "[1] SERVICIOS:"
     Get-Service DHCPServer, DNS | Select-Object Name, Status
-    
-    Write-Host "`n[2] RANGO DHCP (+1):"
+    Write-Host "[2] RANGO DHCP (+1):"
     Get-DhcpServerv4Scope | Select-Object ScopeId, StartRange, EndRange
-    
-    Write-Host "`n[3] DOMINIOS DNS:"
+    Write-Host "[3] DOMINIOS DNS:"
     Get-DnsServerZone | Where-Object { $_.IsAutoCreated -eq $false } | Select-Object ZoneName
-    
-    Write-Host "`n[4] CONCESIONES RECIENTES:"
-    Get-DhcpServerv4Lease -ScopeId "$global:SEGMENTO.0" -ErrorAction SilentlyContinue | Select-Object IPAddress, HostName
-    
-    Read-Host "`nPresione Enter..."
+    Read-Host "Enter..."
 }
 
 # --- MENÚ ---
@@ -154,7 +148,8 @@ while ($true) {
     Write-Host "==============================================="
     Write-Host "      SISTEMA DE ADMINISTRACIÓN DE RED"
     Write-Host "==============================================="
-    Write-Host " IP ACTUAL SERVER: $global:IP_FIJA"
+    $statusIp = if($global:IP_FIJA -eq "") { "PENDIENTE" } else { $global:IP_FIJA }
+    Write-Host " IP ACTUAL SERVER: $statusIp"
     Write-Host "-----------------------------------------------"
     Write-Host "1. Instalar DHCP/DNS"
     Write-Host "2. Configurar Rango / Red / DHCP (Desplazado +1)"
@@ -164,7 +159,7 @@ while ($true) {
     Write-Host "6. VER STATUS DETALLADO"
     Write-Host "7. Salir"
     Write-Host "-----------------------------------------------"
-    $op = Read-Host "Opción"
+    $op = Read-Host "Opcion"
     switch ($op) {
         "1" { Instalar-Servicios }
         "2" { Configurar-Sistema-Principal }
