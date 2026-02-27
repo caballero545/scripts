@@ -125,6 +125,10 @@ function Configure-Network-Services {
     New-NetIPAddress -InterfaceAlias $interface.Name -IPAddress $ip_srv -PrefixLength 24 -DefaultGateway $gateway -ErrorAction SilentlyContinue
 
     # ---------------- DHCP SCOPE ----------------
+    $existingScope = Get-DhcpServerv4Scope -ErrorAction SilentlyContinue
+    if($existingScope){
+    	Remove-DhcpServerv4Scope -ScopeId $existingScope.ScopeId -Force
+    }
     Add-DhcpServerv4Scope -Name "Scope_Principal" `
         -StartRange $IP_INI_REAL `
         -EndRange $IP_FIN_REAL `
@@ -138,7 +142,7 @@ function Configure-Network-Services {
         if($dns2){
             Set-DhcpServerv4OptionValue -OptionId 6 -Value $dns1,$dns2
         } else {
-            Set-DhcpServerv4OptionValue -OptionId 6 -Value $dns1
+            Set-DhcpServerv4OptionValue -ScopeId $IP_INI_REAL -OptionId 6 -Value $dns1 -ErrorAction SilentlyContinue
         }
     }
 
