@@ -26,18 +26,24 @@ function Configure-Network-Services {
     # ---------------- IP INICIAL ----------------
     while($true){
         $IP_INI = Read-Host "IP Inicial (ej. 192.168.100.20)"
-        if([ipaddress]::TryParse($IP_INI,[ref]$null)){
-            break
-        }
+        if(
+    		$IP_INI -match '^(\d{1,3}\.){3}\d{1,3}$' -and
+    		($IP_INI.Split('.') | ForEach-Object {[int]$_ -ge 0 -and [int]$_ -le 255}) -notcontains $false
+    	){
+    		break
+	}
         Write-Host "IP invalida." -ForegroundColor Red
     }
 
     # ---------------- IP FINAL ----------------
     while($true){
         $IP_FIN = Read-Host "IP Final (ej. 192.168.100.30)"
-        if([ipaddress]::TryParse($IP_FIN,[ref]$null)){
-            break
-        }
+        if(
+    		$IP_FIN -match '^(\d{1,3}\.){3}\d{1,3}$' -and
+    		($IP_FIN.Split('.') | ForEach-Object {[int]$_ -ge 0 -and [int]$_ -le 255}) -notcontains $false
+	){
+    		break
+	}
         Write-Host "IP invalida." -ForegroundColor Red
     }
 
