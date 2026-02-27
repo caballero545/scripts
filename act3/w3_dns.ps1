@@ -30,19 +30,30 @@ function Configure-Network-Services {
     # RANGO IP
     while($true){
         $IP_INI = Read-Host "IP Inicial (ej. 192.168.100.20)"
-        if([ipaddress]::TryParse($IP_INI,[ref]$null)){ break }
-        Write-Host "IP invalida." -ForegroundColor Red
+        if([ipaddress]::TryParse($IP_INI,[ref]$null) -and
+           $IP_INI -ne "0.0.0.0" -and
+           $IP_INI -ne "255.255.255.255" -and
+           $IP_INI -ne "127.0.0.0" -and
+           $IP_INI -ne "127.0.0.1"){
+            break
+        }
+        Write-Host "IP invalida o reservada." -ForegroundColor Red
     }
 
     while($true){
         $IP_FIN = Read-Host "IP Final (ej. 192.168.100.30)"
-        if([ipaddress]::TryParse($IP_FIN,[ref]$null)){ break }
-        Write-Host "IP invalida." -ForegroundColor Red
+        if([ipaddress]::TryParse($IP_FIN,[ref]$null) -and
+           $IP_FIN -ne "0.0.0.0" -and
+           $IP_FIN -ne "255.255.255.255" -and
+           $IP_FIN -ne "127.0.0.0" -and
+           $IP_FIN -ne "127.0.0.1"){
+            break
+        }
+        Write-Host "IP invalida o reservada." -ForegroundColor Red
     }
 
     $SEGMENTO = ($IP_INI -split '\.')[0..2] -join '.'
 
-    # IP SERVIDOR = PRIMERA DEL RANGO
     $ip_srv = $IP_INI
     $octeto = [int]($IP_INI.Split(".")[3]) + 1
     $IP_INI_REAL = "$SEGMENTO.$octeto"
@@ -56,25 +67,55 @@ function Configure-Network-Services {
 
     # Gateway opcional
     $gateway = Read-Host "Gateway (Enter para omitir)"
+    if($gateway){
+        if(-not ([ipaddress]::TryParse($gateway,[ref]$null)) -or
+           $gateway -eq "1.0.0.0" -or
+           $gateway -eq "255.255.255.255"){
+            Write-Host "Gateway invalido." -ForegroundColor Red
+            return
+        }
+    }
 
     # DNS primario
     $dns1 = Read-Host "DNS Primario (Enter para omitir)"
+    if($dns1){
+        if(-not ([ipaddress]::TryParse($dns1,[ref]$null)) -or
+           $dns1 -eq "1.0.0.0" -or
+           $dns1 -eq "255.255.255.255"){
+            Write-Host "DNS Primario invalido." -ForegroundColor Red
+            return
+        }
+    }
+
     $dns2 = ""
     if($dns1){
         $dns2 = Read-Host "DNS Secundario (Enter para omitir)"
+        if($dns2){
+            if(-not ([ipaddress]::TryParse($dns2,[ref]$null)) -or
+               $dns2 -eq "1.0.0.0" -or
+               $dns2 -eq "255.255.255.255"){
+                Write-Host "DNS Secundario invalido." -ForegroundColor Red
+                return
+            }
+        }
     }
 
-    # Lease
-    $lease = Read-Host "Tiempo concesion en minutos"
-    $LEASE_TIME = [TimeSpan]::FromMinutes([int]$lease)
+    while($true){
+    	$lease = Read-Host "Tiempo concesion en minutos"
+    
+    	if($lease -match "^[0-9]+$" -and [int]$lease -gt 0){
+        $LEASE_TIME = [TimeSpan]::FromMinutes([int]$lease)
+        break
+    	}
 
-    # ADAPTADOR ACTIVO
+    Write-Host "Debe ingresar un numero entero positivo mayor a 0." -ForegroundColor Red
+    }
+
     $interface = Get-NetAdapter | Where {$_.Status -eq "Up"} | Select -First 1
 
     Remove-NetIPAddress -InterfaceAlias $interface.Name -Confirm:$false -ErrorAction SilentlyContinue
     New-NetIPAddress -InterfaceAlias $interface.Name -IPAddress $ip_srv -PrefixLength 24 -DefaultGateway $gateway -ErrorAction SilentlyContinue
 
-    # CREAR SCOPE DHCP
     Add-DhcpServerv4Scope -Name "Scope_Principal" -StartRange $IP_INI_REAL -EndRange $IP_FIN -SubnetMask $mask -LeaseDuration $LEASE_TIME -ErrorAction SilentlyContinue
 
     Set-DhcpServerv4Binding -InterfaceAlias $interface.Name -BindingState $true
@@ -93,7 +134,6 @@ function Configure-Network-Services {
     Write-Host "Configuracion aplicada correctamente." -ForegroundColor Green
     Read-Host "Presiona Enter..."
 }
-
 # ---------- FUNCION 3 ----------
 function Check-Status {
     Clear-Host
@@ -133,8 +173,14 @@ function Create-Domain {
 
     while($true){
         $ip = Read-Host "IP para el dominio"
-        if([ipaddress]::TryParse($ip,[ref]$null)){ break }
-        Write-Host "IP invalida."
+        if([ipaddress]::TryParse($ip,[ref]$null) -and
+           $ip -ne "0.0.0.0" -and
+           $ip -ne "255.255.255.255" -and
+           $ip -ne "127.0.0.0" -and
+           $ip -ne "127.0.0.1"){
+            break
+        }
+        Write-Host "IP invalida o reservada."
     }
 
     Add-DnsServerResourceRecordA -ZoneName $domain -Name "@" -IPv4Address $ip
