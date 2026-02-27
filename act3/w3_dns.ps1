@@ -1,7 +1,3 @@
-# ============================================
-#   ADMINISTRADOR DHCP + DNS (SERVER CORE)
-# ============================================
-
 # ---------- FUNCION 1 ----------
 function Install-Roles {
     Clear-Host
@@ -27,62 +23,76 @@ function Configure-Network-Services {
     Clear-Host
     Write-Host "=== CONFIGURACION DHCP + DNS ===" -ForegroundColor Yellow
 
-    # RANGO IP
+    # ---------------- IP INICIAL ----------------
     while($true){
         $IP_INI = Read-Host "IP Inicial (ej. 192.168.100.20)"
-        if([ipaddress]::TryParse($IP_INI,[ref]$null) -and
-           $IP_INI -ne "0.0.0.0" -and
-           $IP_INI -ne "255.255.255.255" -and
-           $IP_INI -ne "127.0.0.0" -and
-           $IP_INI -ne "127.0.0.1"){
+        if([ipaddress]::TryParse($IP_INI,[ref]$null)){
             break
         }
-        Write-Host "IP invalida o reservada." -ForegroundColor Red
+        Write-Host "IP invalida." -ForegroundColor Red
     }
 
+    # ---------------- IP FINAL ----------------
     while($true){
         $IP_FIN = Read-Host "IP Final (ej. 192.168.100.30)"
-        if([ipaddress]::TryParse($IP_FIN,[ref]$null) -and
-           $IP_FIN -ne "0.0.0.0" -and
-           $IP_FIN -ne "255.255.255.255" -and
-           $IP_FIN -ne "127.0.0.0" -and
-           $IP_FIN -ne "127.0.0.1"){
+        if([ipaddress]::TryParse($IP_FIN,[ref]$null)){
             break
         }
-        Write-Host "IP invalida o reservada." -ForegroundColor Red
+        Write-Host "IP invalida." -ForegroundColor Red
     }
 
-    $SEGMENTO = ($IP_INI -split '\.')[0..2] -join '.'
+    $ipObjIni = [ipaddress]$IP_INI
+    $ipObjFin = [ipaddress]$IP_FIN
 
+    if([uint32]$ipObjFin.Address -lt [uint32]$ipObjIni.Address){
+        Write-Host "La IP final no puede ser menor que la inicial." -ForegroundColor Red
+        Read-Host "Enter..."
+        return
+    }
+
+    # ----------- IP FIJA SERVIDOR -----------
     $ip_srv = $IP_INI
-    $octeto = [int]($IP_INI.Split(".")[3]) + 1
-    $IP_INI_REAL = "$SEGMENTO.$octeto"
 
-    # MASCARA
-    while($true){
-        $mask = Read-Host "Mascara (ej. 255.255.255.0)"
-        if([ipaddress]::TryParse($mask,[ref]$null)){ break }
-        Write-Host "Mascara invalida." -ForegroundColor Red
+    # ----------- RECORRER RANGO +1 -----------
+    $iniOct = $IP_INI.Split(".")
+    $finOct = $IP_FIN.Split(".")
+
+    $iniLast = [int]$iniOct[3] + 1
+    $finLast = [int]$finOct[3] + 1
+
+    if($iniLast -gt 255 -or $finLast -gt 255){
+        Write-Host "El rango excede 255 al recorrer +1." -ForegroundColor Red
+        Read-Host "Enter..."
+        return
     }
 
-    # Gateway opcional
+    $IP_INI_REAL = "$($iniOct[0]).$($iniOct[1]).$($iniOct[2]).$iniLast"
+    $IP_FIN_REAL = "$($finOct[0]).$($finOct[1]).$($finOct[2]).$finLast"
+
+    # ---------------- MASCARA ----------------
+    $mask = Read-Host "Mascara (Enter para 255.255.255.0)"
+    if([string]::IsNullOrWhiteSpace($mask)){
+        $mask = "255.255.255.0"
+    }
+    elseif(-not ([ipaddress]::TryParse($mask,[ref]$null))){
+        Write-Host "Mascara invalida." -ForegroundColor Red
+        return
+    }
+
+    # ---------------- GATEWAY ----------------
     $gateway = Read-Host "Gateway (Enter para omitir)"
     if($gateway){
-        if(-not ([ipaddress]::TryParse($gateway,[ref]$null)) -or
-           $gateway -eq "1.0.0.0" -or
-           $gateway -eq "255.255.255.255"){
+        if(-not ([ipaddress]::TryParse($gateway,[ref]$null))){
             Write-Host "Gateway invalido." -ForegroundColor Red
             return
         }
     }
 
-    # DNS primario
+    # ---------------- DNS ----------------
     $dns1 = Read-Host "DNS Primario (Enter para omitir)"
     if($dns1){
-        if(-not ([ipaddress]::TryParse($dns1,[ref]$null)) -or
-           $dns1 -eq "1.0.0.0" -or
-           $dns1 -eq "255.255.255.255"){
-            Write-Host "DNS Primario invalido." -ForegroundColor Red
+        if(-not ([ipaddress]::TryParse($dns1,[ref]$null))){
+            Write-Host "DNS invalido." -ForegroundColor Red
             return
         }
     }
@@ -91,32 +101,36 @@ function Configure-Network-Services {
     if($dns1){
         $dns2 = Read-Host "DNS Secundario (Enter para omitir)"
         if($dns2){
-            if(-not ([ipaddress]::TryParse($dns2,[ref]$null)) -or
-               $dns2 -eq "1.0.0.0" -or
-               $dns2 -eq "255.255.255.255"){
+            if(-not ([ipaddress]::TryParse($dns2,[ref]$null))){
                 Write-Host "DNS Secundario invalido." -ForegroundColor Red
                 return
             }
         }
     }
 
+    # ---------------- LEASE ----------------
     while($true){
-    	$lease = Read-Host "Tiempo concesion en minutos"
-    
-    	if($lease -match "^[0-9]+$" -and [int]$lease -gt 0){
-        $LEASE_TIME = [TimeSpan]::FromMinutes([int]$lease)
-        break
-    	}
-
-    Write-Host "Debe ingresar un numero entero positivo mayor a 0." -ForegroundColor Red
+        $lease = Read-Host "Tiempo concesion en minutos"
+        if($lease -match "^[0-9]+$" -and [int]$lease -gt 0){
+            $LEASE_TIME = [TimeSpan]::FromMinutes([int]$lease)
+            break
+        }
+        Write-Host "Debe ser numero entero positivo." -ForegroundColor Red
     }
 
+    # ---------------- CONFIGURAR INTERFAZ ----------------
     $interface = Get-NetAdapter | Where {$_.Status -eq "Up"} | Select -First 1
 
     Remove-NetIPAddress -InterfaceAlias $interface.Name -Confirm:$false -ErrorAction SilentlyContinue
     New-NetIPAddress -InterfaceAlias $interface.Name -IPAddress $ip_srv -PrefixLength 24 -DefaultGateway $gateway -ErrorAction SilentlyContinue
 
-    Add-DhcpServerv4Scope -Name "Scope_Principal" -StartRange $IP_INI_REAL -EndRange $IP_FIN -SubnetMask $mask -LeaseDuration $LEASE_TIME -ErrorAction SilentlyContinue
+    # ---------------- DHCP SCOPE ----------------
+    Add-DhcpServerv4Scope -Name "Scope_Principal" `
+        -StartRange $IP_INI_REAL `
+        -EndRange $IP_FIN_REAL `
+        -SubnetMask $mask `
+        -LeaseDuration $LEASE_TIME `
+        -ErrorAction SilentlyContinue
 
     Set-DhcpServerv4Binding -InterfaceAlias $interface.Name -BindingState $true
 
@@ -128,10 +142,13 @@ function Configure-Network-Services {
         }
     }
 
-    Restart-Service DHCPServer
-    Restart-Service DNS
+    Restart-Service DHCPServer -ErrorAction SilentlyContinue
+    Restart-Service DNS -ErrorAction SilentlyContinue
 
-    Write-Host "Configuracion aplicada correctamente." -ForegroundColor Green
+    Write-Host "`n=== CONFIGURACION APLICADA ===" -ForegroundColor Green
+    Write-Host "IP Servidor: $ip_srv"
+    Write-Host "Rango DHCP:  $IP_INI_REAL - $IP_FIN_REAL"
+
     Read-Host "Presiona Enter..."
 }
 # ---------- FUNCION 3 ----------
