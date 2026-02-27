@@ -1,161 +1,207 @@
-# =====================================================================
-# SCRIPT DE ADMINISTRACION DE RED (WINDOWS SERVER) - TRADUCCION BASH
-# =====================================================================
+# ============================================
+#   ADMINISTRADOR DHCP + DNS (SERVER CORE)
+# ============================================
 
-$global:IP_FIJA = ""
-$global:SEGMENTO = ""
+# ---------- FUNCION 1 ----------
+function Install-Roles {
+    Clear-Host
+    Write-Host "=== INSTALANDO DHCP Y DNS ===" -ForegroundColor Cyan
+    
+    $dhcp = Get-WindowsFeature DHCP
+    $dns  = Get-WindowsFeature DNS
 
-# --- FUNCIONES DE VALIDACION ---
-function Test-ValidarIP {
-    param([string]$ip)
-    if ($ip -match "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$") {
-        if ($ip -eq "0.0.0.0" -or $ip -eq "255.255.255.255" -or $ip -eq "127.0.0.1") {
-            Write-Host "Error: IP prohibida para el servidor." -ForegroundColor Red
-            return $false
+    if (-not $dhcp.Installed) {
+        Install-WindowsFeature DHCP -IncludeManagementTools
+    }
+
+    if (-not $dns.Installed) {
+        Install-WindowsFeature DNS -IncludeManagementTools
+    }
+
+    Write-Host "Roles verificados/instalados correctamente." -ForegroundColor Green
+    Read-Host "Presiona Enter..."
+}
+
+# ---------- FUNCION 2 ----------
+function Configure-Network-Services {
+    Clear-Host
+    Write-Host "=== CONFIGURACION DHCP + DNS ===" -ForegroundColor Yellow
+
+    # RANGO IP
+    while($true){
+        $IP_INI = Read-Host "IP Inicial (ej. 192.168.100.20)"
+        if([ipaddress]::TryParse($IP_INI,[ref]$null)){ break }
+        Write-Host "IP invalida." -ForegroundColor Red
+    }
+
+    while($true){
+        $IP_FIN = Read-Host "IP Final (ej. 192.168.100.30)"
+        if([ipaddress]::TryParse($IP_FIN,[ref]$null)){ break }
+        Write-Host "IP invalida." -ForegroundColor Red
+    }
+
+    $SEGMENTO = ($IP_INI -split '\.')[0..2] -join '.'
+
+    # IP SERVIDOR = PRIMERA DEL RANGO
+    $ip_srv = $IP_INI
+    $octeto = [int]($IP_INI.Split(".")[3]) + 1
+    $IP_INI_REAL = "$SEGMENTO.$octeto"
+
+    # MASCARA
+    while($true){
+        $mask = Read-Host "Mascara (ej. 255.255.255.0)"
+        if([ipaddress]::TryParse($mask,[ref]$null)){ break }
+        Write-Host "Mascara invalida." -ForegroundColor Red
+    }
+
+    # Gateway opcional
+    $gateway = Read-Host "Gateway (Enter para omitir)"
+
+    # DNS primario
+    $dns1 = Read-Host "DNS Primario (Enter para omitir)"
+    $dns2 = ""
+    if($dns1){
+        $dns2 = Read-Host "DNS Secundario (Enter para omitir)"
+    }
+
+    # Lease
+    $lease = Read-Host "Tiempo concesion en minutos"
+    $LEASE_TIME = [TimeSpan]::FromMinutes([int]$lease)
+
+    # ADAPTADOR ACTIVO
+    $interface = Get-NetAdapter | Where {$_.Status -eq "Up"} | Select -First 1
+
+    Remove-NetIPAddress -InterfaceAlias $interface.Name -Confirm:$false -ErrorAction SilentlyContinue
+    New-NetIPAddress -InterfaceAlias $interface.Name -IPAddress $ip_srv -PrefixLength 24 -DefaultGateway $gateway -ErrorAction SilentlyContinue
+
+    # CREAR SCOPE DHCP
+    Add-DhcpServerv4Scope -Name "Scope_Principal" -StartRange $IP_INI_REAL -EndRange $IP_FIN -SubnetMask $mask -LeaseDuration $LEASE_TIME -ErrorAction SilentlyContinue
+
+    Set-DhcpServerv4Binding -InterfaceAlias $interface.Name -BindingState $true
+
+    if($dns1){
+        if($dns2){
+            Set-DhcpServerv4OptionValue -OptionId 6 -Value $dns1,$dns2
+        } else {
+            Set-DhcpServerv4OptionValue -OptionId 6 -Value $dns1
         }
-        return $true
-    }
-    return $false
-}
-
-# --- 1. INSTALACION ---
-function Instalar-Servicios {
-    Clear-Host
-    Write-Host "Instalando DHCP y DNS..." -ForegroundColor Cyan
-    Install-WindowsFeature -Name DHCP, DNS -IncludeManagementTools
-    Set-Service -Name DHCPServer, DNS -StartupType Automatic
-    Write-Host "Instalado. Presione Enter para continuar..." -ForegroundColor Green
-    Read-Host
-}
-
-# --- 2. CONFIGURACION DE RED / DHCP (Logica +1) ---
-function Configurar-Principal {
-    Clear-Host
-    Write-Host "CONFIGURACION DE RED Y DHCP (Logica +1)" -ForegroundColor Cyan
-
-    $iface = (Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1).Name
-    if (-not $iface) { $iface = "Ethernet 2" }
-
-    while ($true) {
-        $R_INI = Read-Host "Inicio de rango (ej. 10.10.10.0)"
-        if (Test-ValidarIP $R_INI) { break }
-    }
-    while ($true) {
-        $R_FIN = Read-Host "Fin de rango (ej. 10.10.10.10)"
-        if (Test-ValidarIP $R_FIN) { break }
     }
 
-    # Procesamiento Matematico (Replica de 'cut' en Bash)
-    $global:IP_FIJA = $R_INI
-    $parts = $R_INI.Split('.')
-    $global:SEGMENTO = "$($parts[0]).$($parts[1]).$($parts[2])"
-    [int]$OctIni = $parts[3]
-    [int]$OctFin = $R_FIN.Split('.')[3]
-    
-    $DHCP_START = "$global:SEGMENTO.$($OctIni + 1)"
-    $DHCP_END = "$global:SEGMENTO.$($OctFin + 1)"
+    Restart-Service DHCPServer
+    Restart-Service DNS
 
-    $MASK = Read-Host "Mascara (Enter para 255.255.255.0)"
-    if ($MASK -eq "") { $MASK = "255.255.255.0" }
-    
-    $GW = Read-Host "Gateway (Enter para vacio)"
-    
-    # DNS Primario y Secundario (Como en tu Bash)
-    $DNS_1 = Read-Host "DNS Primario (Opcional)"
-    $DNS_2 = Read-Host "DNS Secundario (Opcional)"
-    
-    $LEASE_SEC = Read-Host "Lease time en segundos"
-    if ($LEASE_SEC -match "^\d+$") { $L_TIME = [TimeSpan]::FromSeconds([int]$LEASE_SEC) } else { $L_TIME = [TimeSpan]::FromHours(8) }
-
-    # Aplicar Red (Replica de ip addr add)
-    Write-Host "Aplicando IP fija al servidor..." -ForegroundColor Yellow
-    Remove-NetIPAddress -InterfaceAlias $iface -AddressFamily IPv4 -Confirm:$false -ErrorAction SilentlyContinue
-    New-NetIPAddress -InterfaceAlias $iface -IPAddress $global:IP_FIJA -PrefixLength 24 -ErrorAction SilentlyContinue
-    
-    # Fix Resolv.conf: Apuntar a si mismo
-    Set-DnsClientServerAddress -InterfaceAlias $iface -ServerAddresses ("127.0.0.1")
-
-    # Fix Internet: Forwarders (Sin el parametro -Force que dio error)
-    Add-DnsServerForwarder -IPAddress "8.8.8.8","8.8.4.4" -ErrorAction SilentlyContinue
-
-    # Configurar DHCP (Replica de dhcpd.conf)
-    $scopeId = "$global:SEGMENTO.0"
-    Remove-DhcpServerv4Scope -ScopeId $scopeId -Force -ErrorAction SilentlyContinue
-    Add-DhcpServerv4Scope -Name "RedExamen" -StartRange $DHCP_START -EndRange $DHCP_END -SubnetMask $MASK -LeaseDuration $L_TIME
-    
-    if ($GW -ne "") { Set-DhcpServerv4OptionValue -OptionId 3 -Value $GW }
-    
-    # Configurar DNS en DHCP (Opcion 6)
-    $DNS_LIST = @()
-    if ($DNS_1 -ne "") { $DNS_LIST += $DNS_1 }
-    if ($DNS_2 -ne "") { $DNS_LIST += $DNS_2 }
-    if ($DNS_LIST.Count -gt 0) { Set-DhcpServerv4OptionValue -OptionId 6 -Value $DNS_LIST }
-
-    Restart-Service DHCPServer, DNS
-    Write-Host "Listo. Server: $global:IP_FIJA | DHCP: $DHCP_START a $DHCP_END" -ForegroundColor Green
-    Read-Host "Enter..."
+    Write-Host "Configuracion aplicada correctamente." -ForegroundColor Green
+    Read-Host "Presiona Enter..."
 }
 
-# --- 3. DOMINIOS ---
-function Add-Dominio {
+# ---------- FUNCION 3 ----------
+function Check-Status {
     Clear-Host
-    if ($global:IP_FIJA -eq "") { Write-Host "Error: Configure red primero." -ForegroundColor Red; return }
-    $DOM = Read-Host "Nombre del dominio"
-    if ($DOM -eq "") { return }
-    if (Get-DnsServerZone -Name $DOM -ErrorAction SilentlyContinue) {
-        Write-Host "Ese dominio ya existe." -ForegroundColor Red
+    Write-Host "=== ESTADO SERVICIOS ===" -ForegroundColor Cyan
+    
+    Get-Service DHCPServer | Select Status,DisplayName
+    Get-Service DNS | Select Status,DisplayName
+
+    Write-Host "`n=== DOMINIOS CONFIGURADOS ===" -ForegroundColor Yellow
+    $zones = Get-DnsServerZone | Where {$_.ZoneType -eq "Primary"}
+
+    if($zones){
+        foreach($z in $zones){
+            Write-Host "Dominio: $($z.ZoneName)"
+        }
     } else {
-        Add-DnsServerPrimaryZone -Name $DOM -ZoneFile "$DOM.dns"
-        Add-DnsServerResourceRecordA -Name "@" -IPv4Address $global:IP_FIJA -ZoneName $DOM
-        Add-DnsServerResourceRecordA -Name "ns" -IPv4Address $global:IP_FIJA -ZoneName $DOM
-        Write-Host "Dominio creado con exito." -ForegroundColor Green
+        Write-Host "No hay dominios creados."
     }
-    Read-Host "Enter..."
+
+    Read-Host "Presiona Enter..."
 }
 
-# --- 4. ELIMINAR ---
-function Eliminar-Dominio {
+# ---------- FUNCION 4 ----------
+function Create-Domain {
     Clear-Host
-    $DOM = Read-Host "Dominio a eliminar"
-    if (Get-DnsServerZone -Name $DOM -ErrorAction SilentlyContinue) {
-        Remove-DnsServerZone -Name $DOM -Force
-        Write-Host "Dominio eliminado." -ForegroundColor Green
-    } else {
-        Write-Host "Error: El dominio no existe." -ForegroundColor Red
+    Write-Host "=== CREAR DOMINIO ===" -ForegroundColor Cyan
+
+    $domain = Read-Host "Nombre dominio (ej. empresa.local)"
+
+    if(Get-DnsServerZone -Name $domain -ErrorAction SilentlyContinue){
+        Write-Host "El dominio ya existe." -ForegroundColor Red
+        Read-Host "Enter..."
+        return
     }
+
+    Add-DnsServerPrimaryZone -Name $domain -ZoneFile "$domain.dns"
+
+    while($true){
+        $ip = Read-Host "IP para el dominio"
+        if([ipaddress]::TryParse($ip,[ref]$null)){ break }
+        Write-Host "IP invalida."
+    }
+
+    Add-DnsServerResourceRecordA -ZoneName $domain -Name "@" -IPv4Address $ip
+
+    Write-Host "Dominio creado correctamente." -ForegroundColor Green
     Read-Host "Enter..."
 }
 
-# --- MENU ---
-while ($true) {
-    cls
-    Write-Host "===================================="
-    Write-Host "   ADMINISTRADOR DE RED WINDOWS"
-    Write-Host "===================================="
-    $ipActual = if($global:IP_FIJA -eq "") { "PENDIENTE" } else { $global:IP_FIJA }
-    Write-Host " IP SERVER: $ipActual"
-    Write-Host "------------------------------------"
+# ---------- FUNCION 5 ----------
+function Show-Domains {
+    Clear-Host
+    Write-Host "=== LISTA DOMINIOS ===" -ForegroundColor Yellow
+
+    $zones = Get-DnsServerZone | Where {$_.ZoneType -eq "Primary"}
+
+    if($zones){
+        $zones | Select ZoneName | Format-Table -AutoSize
+    } else {
+        Write-Host "No hay dominios."
+    }
+
+    Read-Host "Enter..."
+}
+
+# ---------- FUNCION 6 ----------
+function Delete-Domain {
+    Clear-Host
+    Write-Host "=== ELIMINAR DOMINIO ===" -ForegroundColor Red
+
+    $domain = Read-Host "Dominio a eliminar"
+
+    if(-not (Get-DnsServerZone -Name $domain -ErrorAction SilentlyContinue)){
+        Write-Host "Dominio no existe." -ForegroundColor Red
+        Read-Host "Enter..."
+        return
+    }
+
+    Remove-DnsServerZone -Name $domain -Force
+
+    Write-Host "Dominio eliminado correctamente." -ForegroundColor Green
+    Read-Host "Enter..."
+}
+
+# ---------- MENU ----------
+while($true){
+    Clear-Host
+    Write-Host "----------------------------------"
+    Write-Host " ADMINISTRADOR DHCP + DNS SERVER "
+    Write-Host "----------------------------------"
     Write-Host "1. Instalar DHCP y DNS"
-    Write-Host "2. Configurar Red y DHCP (+1)"
-    Write-Host "3. Add Dominio DNS"
-    Write-Host "4. Eliminar Dominio DNS"
-    Write-Host "5. Listar Dominios"
-    Write-Host "6. Status Detallado"
+    Write-Host "2. Configuracion DHCP y DNS"
+    Write-Host "3. Check Status"
+    Write-Host "4. Crear Dominio"
+    Write-Host "5. Consultar Dominios"
+    Write-Host "6. Eliminar Dominio"
     Write-Host "7. Salir"
-    
+
     $op = Read-Host "Seleccione opcion"
-    switch ($op) {
-        "1" { Instalar-Servicios }
-        "2" { Configurar-Principal }
-        "3" { Add-Dominio }
-        "4" { Eliminar-Dominio }
-        "5" { Get-DnsServerZone | Where-Object { $_.IsAutoCreated -eq $false } | Select-Object ZoneName; Read-Host "..." }
-        "6" { 
-            cls
-            Get-Service DHCPServer, DNS | Select-Object Name, Status
-            Get-DhcpServerv4Scope | Select-Object ScopeId, StartRange, EndRange
-            Read-Host "Enter..."
-        }
+
+    switch($op){
+        "1" { Install-Roles }
+        "2" { Configure-Network-Services }
+        "3" { Check-Status }
+        "4" { Create-Domain }
+        "5" { Show-Domains }
+        "6" { Delete-Domain }
         "7" { exit }
+        default { Write-Host "Opcion invalida."; Start-Sleep 1 }
     }
 }
