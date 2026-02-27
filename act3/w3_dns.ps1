@@ -113,6 +113,9 @@ function Configure-Network-Services {
             }
         }
     }
+    
+    Start-Service DNS -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
 
     # ---------------- LEASE ----------------
     while($true){
@@ -142,13 +145,15 @@ function Configure-Network-Services {
         -LeaseDuration $LEASE_TIME `
         -ErrorAction SilentlyContinue
 
-    Set-DhcpServerv4Binding -InterfaceAlias $interface.Name -BindingState $true
+    $scope = Get-DhcpServerv4Scope -Name "Scope_Principal"
+    $scopeId = $scope.ScopeId
+    Set-DhcpServerv4Binding -IPAddress $ip_srv -BindingState $true -ErrorAction SilentlyContinue
 
     if($dns1){
         if($dns2){
-            Set-DhcpServerv4OptionValue -OptionId 6 -Value $dns1,$dns2
+            Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 6 -Value $dns1,$dns2 -ErrorAction SilentlyContinue
         } else {
-            Set-DhcpServerv4OptionValue -ScopeId $IP_INI_REAL -OptionId 6 -Value $dns1 -ErrorAction SilentlyContinue
+            Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 6 -Value $dns1 -ErrorAction SilentlyContinue
         }
     }
 
