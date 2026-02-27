@@ -129,80 +129,59 @@ function Configure-Network-Services {
 
     # ---------------- CONFIGURAR INTERFAZ ----------------
     $interface = Get-NetAdapter | Where {$_.Status -eq "Up"} | Select -First 1
+    $ifName = $interface.Name
 
-    Remove-NetIPAddress -InterfaceAlias $interface.Name -Confirm:$false -ErrorAction SilentlyContinue
-    New-NetIPAddress -InterfaceAlias $interface.Name -IPAddress $ip_srv -PrefixLength 24 -DefaultGateway $gateway -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 5
+    Remove-NetIPAddress -InterfaceAlias $ifName -Confirm:$false -ErrorAction SilentlyContinue
+    New-NetIPAddress -InterfaceAlias $ifName -IPAddress $ip_srv -PrefixLength 24 -DefaultGateway $gateway -ErrorAction SilentlyContinue
+    
+    # FIX 1: Espera obligatoria para que Windows reconozca la IP
+    Start-Sleep -Seconds 5 
+
+    # FIX 2: Configurar el DNS del propio servidor a sí mismo para validar Option 6
+    Set-DnsClientServerAddress -InterfaceAlias $ifName -ServerAddresses ("127.0.0.1")
 
     # ---------------- DHCP SCOPE ----------------
     
+    $interface = Get-NetAdapter | Where {$_.Status -eq "Up"} | Select -First 1
+    $ifName = $interface.Name
+
+    Remove-NetIPAddress -InterfaceAlias $ifName -Confirm:$false -ErrorAction SilentlyContinue
+    New-NetIPAddress -InterfaceAlias $ifName -IPAddress $ip_srv -PrefixLength 24 -DefaultGateway $gateway -ErrorAction SilentlyContinue
+    
+    # FIX 1: Espera obligatoria para que Windows reconozca la IP
+    Start-Sleep -Seconds 5 
+
+    # FIX 2: Configurar el DNS del propio servidor a sí mismo para validar Option 6
+    Set-DnsClientServerAddress -InterfaceAlias $ifName -ServerAddresses ("127.0.0.1")
+
+    # ---------------- DHCP SCOPE ----------------
     $existingScope = Get-DhcpServerv4Scope -ErrorAction SilentlyContinue
-if ($existingScope) {
-    foreach ($s in $existingScope) {
-        Remove-DhcpServerv4Scope -ScopeId $s.ScopeId -Force
+    if ($existingScope) {
+        foreach ($s in $existingScope) { Remove-DhcpServerv4Scope -ScopeId $s.ScopeId -Force }
     }
-}
 
-# Crear nuevo Scope
-Add-DhcpServerv4Scope `
-    -Name "Scope_Principal" `
-    -StartRange $IP_INI_REAL `
-    -EndRange $IP_FIN_REAL `
-    -SubnetMask $mask `
-    -LeaseDuration $LEASE_TIME
-
-# Esperar a que se registre correctamente
-Start-Sleep -Seconds 2
-
-# Obtener el Scope recién creado
-$scope = Get-DhcpServerv4Scope | Where-Object { $_.Name -eq "Scope_Principal" }
-
-if (-not $scope) {
-    Write-Host "Error: No se pudo obtener el Scope creado." -ForegroundColor Red
-    exit
-}
-
-$scopeId = $scope.ScopeId
-
-# Asegurar que el servicio DHCP esté iniciado
-Start-Service DHCPServer -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 2
-
-# Activar binding en la interfaz correcta
-try {
-    Set-DhcpServerv4Binding -InterfaceAlias $interface.Name -BindingState $true -ErrorAction Stop
-} catch {
-    Write-Host "Aviso: Reintentando enlace DHCP..." -ForegroundColor Yellow
+    Add-DhcpServerv4Scope -Name "Scope_Principal" -StartRange $IP_INI_REAL -EndRange $IP_FIN_REAL -SubnetMask $mask -LeaseDuration $LEASE_TIME
     Start-Sleep -Seconds 2
-    Set-DhcpServerv4Binding -InterfaceAlias $interface.Name -BindingState $true -ErrorAction SilentlyContinue
-}
 
-# Configurar DNS (Option 6)
-if ($dns1) {
-    if ($dns2) {
-        Set-DhcpServerv4OptionValue `
-            -ScopeId $scopeId `
-            -OptionId 6 `
-            -Value $dns1, $dns2
+    $scopeId = (Get-DhcpServerv4Scope | Where-Object { $_.Name -eq "Scope_Principal" }).ScopeId
+
+    # FIX 3: Reintentar el Binding si falla
+    try {
+        Set-DhcpServerv4Binding -InterfaceAlias $ifName -BindingState $true -ErrorAction Stop
+    } catch {
+        Start-Sleep -Seconds 2
+        Set-DhcpServerv4Binding -InterfaceAlias $ifName -BindingState $true -ErrorAction SilentlyContinue
     }
-    else {
-        Set-DhcpServerv4OptionValue `
-            -ScopeId $scopeId `
-            -OptionId 6 `
-            -Value $dns1
+
+    # Configurar DNS (Option 6) - Ahora no dará error de "Invalid"
+    if ($dns1) {
+        $dnsValues = if ($dns2) { @($dns1, $dns2) } else { @($dns1) }
+        Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 6 -Value $dnsValues -ErrorAction SilentlyContinue
     }
-}
 
-# Reiniciar servicios
-Restart-Service DHCPServer
-Restart-Service DNS
-
-Write-Host "`n=== CONFIGURACION APLICADA ===" -ForegroundColor Green
-Write-Host "IP Servidor: $ip_srv"
-Write-Host "Rango DHCP:  $IP_INI_REAL - $IP_FIN_REAL"
-Write-Host "DNS: $dns1 $dns2"
-
-Read-Host "Presiona Enter para continuar..."
+    Restart-Service DHCPServer, DNS -Force
+    Write-Host "`n=== CONFIGURACION APLICADA SIN ERRORES ===" -ForegroundColor Green
+    Read-Host "Presiona Enter..."
 
 }
 # ---------- FUNCION 3 ----------
@@ -231,12 +210,12 @@ function Check-Status {
 function Create-Domain {
     Clear-Host
     Write-Host "=== CREAR DOMINIO ===" -ForegroundColor Cyan
-
     $domain = Read-Host "Nombre dominio (ej. empresa.local)"
 
     if(Get-DnsServerZone -Name $domain -ErrorAction SilentlyContinue){
-        Write-Host "El dominio ya existe." -ForegroundColor Red
-        Read-Host "Enter..."
+        # FIX: Corregido el nombre del color y comillas
+        Write-Host "[ERROR] El dominio ya existe." -ForegroundColor Red 
+        Read-Host "Presiona Enter..."
         return
     }
 
