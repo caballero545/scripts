@@ -134,37 +134,71 @@ function Configure-Network-Services {
     New-NetIPAddress -InterfaceAlias $interface.Name -IPAddress $ip_srv -PrefixLength 24 -DefaultGateway $gateway -ErrorAction SilentlyContinue
 
     # ---------------- DHCP SCOPE ----------------
+    
     $existingScope = Get-DhcpServerv4Scope -ErrorAction SilentlyContinue
-    if($existingScope){
-    	Remove-DhcpServerv4Scope -ScopeId $existingScope.ScopeId -Force
+if ($existingScope) {
+    foreach ($s in $existingScope) {
+        Remove-DhcpServerv4Scope -ScopeId $s.ScopeId -Force
     }
-    Add-DhcpServerv4Scope -Name "Scope_Principal" `
-        -StartRange $IP_INI_REAL `
-        -EndRange $IP_FIN_REAL `
-        -SubnetMask $mask `
-        -LeaseDuration $LEASE_TIME `
-        -ErrorAction SilentlyContinue
+}
 
-    $scope = Get-DhcpServerv4Scope -Name "Scope_Principal"
-    $scopeId = $scope.ScopeId
-    Set-DhcpServerv4Binding -IPAddress $ip_srv -BindingState $true -ErrorAction SilentlyContinue
+# Crear nuevo Scope
+Add-DhcpServerv4Scope `
+    -Name "Scope_Principal" `
+    -StartRange $IP_INI_REAL `
+    -EndRange $IP_FIN_REAL `
+    -SubnetMask $mask `
+    -LeaseDuration $LEASE_TIME
 
-    if($dns1){
-        if($dns2){
-            Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 6 -Value $dns1,$dns2 -ErrorAction SilentlyContinue
-        } else {
-            Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 6 -Value $dns1 -ErrorAction SilentlyContinue
-        }
+# Esperar a que se registre correctamente
+Start-Sleep -Seconds 2
+
+# Obtener el Scope recién creado
+$scope = Get-DhcpServerv4Scope | Where-Object { $_.Name -eq "Scope_Principal" }
+
+if (-not $scope) {
+    Write-Host "Error: No se pudo obtener el Scope creado." -ForegroundColor Red
+    exit
+}
+
+$scopeId = $scope.ScopeId
+
+# Asegurar que el servicio DHCP esté iniciado
+Start-Service DHCPServer -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+
+# Activar binding en la interfaz correcta
+Set-DhcpServerv4Binding `
+    -InterfaceAlias $interface.Name `
+    -BindingState $true
+
+# Configurar DNS (Option 6)
+if ($dns1) {
+    if ($dns2) {
+        Set-DhcpServerv4OptionValue `
+            -ScopeId $scopeId `
+            -OptionId 6 `
+            -Value $dns1, $dns2
     }
+    else {
+        Set-DhcpServerv4OptionValue `
+            -ScopeId $scopeId `
+            -OptionId 6 `
+            -Value $dns1
+    }
+}
 
-    Restart-Service DHCPServer -ErrorAction SilentlyContinue
-    Restart-Service DNS -ErrorAction SilentlyContinue
+# Reiniciar servicios
+Restart-Service DHCPServer
+Restart-Service DNS
 
-    Write-Host "`n=== CONFIGURACION APLICADA ===" -ForegroundColor Green
-    Write-Host "IP Servidor: $ip_srv"
-    Write-Host "Rango DHCP:  $IP_INI_REAL - $IP_FIN_REAL"
+Write-Host "`n=== CONFIGURACION APLICADA ===" -ForegroundColor Green
+Write-Host "IP Servidor: $ip_srv"
+Write-Host "Rango DHCP:  $IP_INI_REAL - $IP_FIN_REAL"
+Write-Host "DNS: $dns1 $dns2"
 
-    Read-Host "Presiona Enter..."
+Read-Host "Presiona Enter para continuar..."
+
 }
 # ---------- FUNCION 3 ----------
 function Check-Status {
