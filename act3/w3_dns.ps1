@@ -132,6 +132,7 @@ function Configure-Network-Services {
 
     Remove-NetIPAddress -InterfaceAlias $interface.Name -Confirm:$false -ErrorAction SilentlyContinue
     New-NetIPAddress -InterfaceAlias $interface.Name -IPAddress $ip_srv -PrefixLength 24 -DefaultGateway $gateway -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 5
 
     # ---------------- DHCP SCOPE ----------------
     
@@ -168,9 +169,13 @@ Start-Service DHCPServer -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 
 # Activar binding en la interfaz correcta
-Set-DhcpServerv4Binding `
-    -InterfaceAlias $interface.Name `
-    -BindingState $true
+try {
+    Set-DhcpServerv4Binding -InterfaceAlias $interface.Name -BindingState $true -ErrorAction Stop
+} catch {
+    Write-Host "Aviso: Reintentando enlace DHCP..." -ForegroundColor Yellow
+    Start-Sleep -Seconds 2
+    Set-DhcpServerv4Binding -InterfaceAlias $interface.Name -BindingState $true -ErrorAction SilentlyContinue
+}
 
 # Configurar DNS (Option 6)
 if ($dns1) {
