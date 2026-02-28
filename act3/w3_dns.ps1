@@ -1,6 +1,6 @@
 # ---------- FUNCION 1 ----------
 function Install-Roles {
-    Clear-Host
+    Clear-ScreenFix
     Write-Host "=== INSTALANDO DHCP Y DNS ===" -ForegroundColor Cyan
     
     $dhcp = Get-WindowsFeature DHCP
@@ -20,7 +20,7 @@ function Install-Roles {
 
 # ---------- FUNCION 2 ----------
 function Configure-Network-Services {
-    Clear-Host
+    Clear-ScreenFix
     Write-Host "=== CONFIGURACION DHCP + DNS ===" -ForegroundColor Yellow
 
     # ---------------- IP INICIAL ----------------
@@ -138,21 +138,7 @@ function Configure-Network-Services {
     Start-Sleep -Seconds 5 
 
     # FIX 2: Configurar el DNS del propio servidor a sí mismo para validar Option 6
-    Set-DnsClientServerAddress -InterfaceAlias $ifName -ServerAddresses ("127.0.0.1")
-
-    # ---------------- DHCP SCOPE ----------------
-    
-    $interface = Get-NetAdapter | Where {$_.Status -eq "Up"} | Select -First 1
-    $ifName = $interface.Name
-
-    Remove-NetIPAddress -InterfaceAlias $ifName -Confirm:$false -ErrorAction SilentlyContinue
-    New-NetIPAddress -InterfaceAlias $ifName -IPAddress $ip_srv -PrefixLength 24 -DefaultGateway $gateway -ErrorAction SilentlyContinue
-    
-    # FIX 1: Espera obligatoria para que Windows reconozca la IP
-    Start-Sleep -Seconds 5 
-
-    # FIX 2: Configurar el DNS del propio servidor a sí mismo para validar Option 6
-    Set-DnsClientServerAddress -InterfaceAlias $ifName -ServerAddresses ("127.0.0.1")
+    Set-DnsClientServerAddress -InterfaceAlias $ifName -ServerAddresses $ip_srv
 
     # ---------------- DHCP SCOPE ----------------
     $existingScope = Get-DhcpServerv4Scope -ErrorAction SilentlyContinue
@@ -174,10 +160,13 @@ function Configure-Network-Services {
     }
 
     # Configurar DNS (Option 6) - Ahora no dará error de "Invalid"
-    if ($dns1) {
-        $dnsValues = if ($dns2) { @($dns1, $dns2) } else { @($dns1) }
-        Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 6 -Value $dnsValues -ErrorAction SilentlyContinue
+    $dnsValues = @($ip_srv)
+
+    if ($dns2) {
+    	$dnsValues += $dns2
     }
+
+    Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 6 -Value $dnsValues
 
     Restart-Service DHCPServer, DNS -Force
     Write-Host "`n=== CONFIGURACION APLICADA SIN ERRORES ===" -ForegroundColor Green
@@ -186,7 +175,7 @@ function Configure-Network-Services {
 }
 # ---------- FUNCION 3 ----------
 function Check-Status {
-    Clear-Host
+    Clear-ScreenFix
     Write-Host "=== ESTADO SERVICIOS ===" -ForegroundColor Cyan
     
     Get-Service DHCPServer | Select Status,DisplayName
@@ -208,7 +197,7 @@ function Check-Status {
 
 # ---------- FUNCION 4 ----------
 function Create-Domain {
-    Clear-Host
+    Clear-ScreenFix
     Write-Host "=== CREAR DOMINIO ===" -ForegroundColor Cyan
     $domain = Read-Host "Nombre dominio (ej. empresa.local)"
 
@@ -241,7 +230,7 @@ function Create-Domain {
 
 # ---------- FUNCION 5 ----------
 function Show-Domains {
-    Clear-Host
+    Clear-ScreenFix
     Write-Host "=== LISTA DOMINIOS ===" -ForegroundColor Yellow
 
     $zones = Get-DnsServerZone | Where {$_.ZoneType -eq "Primary"}
@@ -257,7 +246,7 @@ function Show-Domains {
 
 # ---------- FUNCION 6 ----------
 function Delete-Domain {
-    Clear-Host
+    Clear-ScreenFix
     Write-Host "=== ELIMINAR DOMINIO ===" -ForegroundColor Red
 
     $domain = Read-Host "Dominio a eliminar"
@@ -274,9 +263,14 @@ function Delete-Domain {
     Read-Host "Enter..."
 }
 
+function Clear-ScreenFix {
+    [Console]::Clear()
+    $Host.UI.RawUI.FlushInputBuffer()
+}
+
 # ---------- MENU ----------
 while($true){
-    Clear-Host
+    Clear-ScreenFix
     Write-Host "----------------------------------"
     Write-Host " ADMINISTRADOR DHCP + DNS SERVER "
     Write-Host "----------------------------------"
@@ -286,7 +280,8 @@ while($true){
     Write-Host "4. Crear Dominio"
     Write-Host "5. Consultar Dominios"
     Write-Host "6. Eliminar Dominio"
-    Write-Host "7. Salir"
+    Write-Host "7. Limpiar Pantalla"
+    Write-Host "8. Salir"
 
     $op = Read-Host "Seleccione opcion"
 
@@ -297,7 +292,8 @@ while($true){
         "4" { Create-Domain }
         "5" { Show-Domains }
         "6" { Delete-Domain }
-        "7" { exit }
+	"7" { Clear-ScreenFix }
+        "8" { exit }
         default { Write-Host "Opcion invalida."; Start-Sleep 1 }
     }
 }
