@@ -30,9 +30,7 @@ function Configure-Network-Services {
         if(
             $IP_INI -match '^(\d{1,3}\.){3}\d{1,3}$' -and
             ($IP_INI.Split('.') | ForEach-Object {[int]$_ -ge 0 -and [int]$_ -le 255}) -notcontains $false
-        ){
-            break
-        }
+        ){ break }
         Write-Host "IP invalida." -ForegroundColor Red
     }
 
@@ -42,9 +40,7 @@ function Configure-Network-Services {
         if(
             $IP_FIN -match '^(\d{1,3}\.){3}\d{1,3}$' -and
             ($IP_FIN.Split('.') | ForEach-Object {[int]$_ -ge 0 -and [int]$_ -le 255}) -notcontains $false
-        ){
-            break
-        }
+        ){ break }
         Write-Host "IP invalida." -ForegroundColor Red
     }
 
@@ -76,31 +72,63 @@ function Configure-Network-Services {
 
     # ---------------- MASCARA ----------------
     $mask = Read-Host "Mascara (Enter para 255.255.255.0)"
-    if([string]::IsNullOrWhiteSpace($mask)){
-        $mask = "255.255.255.0"
-    }
+    if([string]::IsNullOrWhiteSpace($mask)){ $mask = "255.255.255.0" }
 
     # ---------------- GATEWAY ----------------
     $gateway = Read-Host "Gateway (Enter para omitir)"
 
     # ---------------- DNS ----------------
-    $dns1 = Read-Host "DNS Primario (Enter para omitir)"
     $dns2 = ""
-    if($dns1){
-        $dns2 = Read-Host "DNS Secundario (Enter para omitir)"
+    $dns1 = Read-Host "DNS Primario (Enter para omitir)"
+    if($dns1){ $dns2 = Read-Host "DNS Secundario (Enter para omitir)" }
+
+    # ---------------- LEASE ----------------
+    while($true){
+        $lease = Read-Host "Tiempo concesion en minutos"
+        if($lease -match "^[0-9]+$" -and [int]$lease -gt 0){
+            $LEASE_TIME = [TimeSpan]::FromMinutes([int]$lease)
+            break
+        }
+        Write-Host "Debe ser numero entero positivo." -ForegroundColor Red
     }
 
-    # ---------------- INICIAR DNS ----------------
+    # ---------------- INTERFAZ ----------------
+    $interface = Get-NetAdapter | Where {$_.Status -eq "Up"} | Select -First 1
+    $ifName = $interface.Name
+
+    # ELIMINAR TODAS LAS IPs IPv4
+    Get-NetIPAddress -InterfaceAlias $ifName -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Remove-NetIPAddress -Confirm:$false -ErrorAction SilentlyContinue
+
+    Start-Sleep -Seconds 2
+
+    # CREAR IP LIMPIA
+    try {
+        if ($gateway) {
+            New-NetIPAddress -InterfaceAlias $ifName -IPAddress $ip_srv -PrefixLength 24 -DefaultGateway $gateway -ErrorAction Stop
+        }
+        else {
+            New-NetIPAddress -InterfaceAlias $ifName -IPAddress $ip_srv -PrefixLength 24 -ErrorAction Stop
+        }
+    }
+    catch {
+        Write-Host "Error configurando IP. Verifica que no exista conflicto." -ForegroundColor Red
+        Read-Host "Enter..."
+        return
+    }
+
+    Start-Sleep -Seconds 3
+    Set-DnsClientServerAddress -InterfaceAlias $ifName -ServerAddresses $ip_srv
+
+    # ---------------- DNS SERVER ----------------
     Start-Service DNS -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 
-    # ================== FIX DNS 1 ==================
-    # Forzar DNS a escuchar en la IP real del servidor
+    # Forzar DNS a escuchar en la IP real
     Set-DnsServerSetting -ListenAddresses $ip_srv
     Restart-Service DNS
     Start-Sleep -Seconds 3
 
-    # ================== FIX DNS 2 ==================
     # Crear zona reversa automática
     $networkID = ($ip_srv.Split(".")[0..2] -join ".")
     $reverseZone = ($networkID.Split(".")[2..0] -join ".") + ".in-addr.arpa"
@@ -109,12 +137,10 @@ function Configure-Network-Services {
         Add-DnsServerPrimaryZone -NetworkID "$networkID/24" -ZoneFile "$reverseZone.dns"
     }
 
-    # ================== FIX DNS 3 ==================
-    # Agregar forwarder público
-    Set-DnsServerForwarder -IPAddress 8.8.8.8 -PassThru -ErrorAction SilentlyContinue
+    # Forwarder público
+    Set-DnsServerForwarder -IPAddress 8.8.8.8 -ErrorAction SilentlyContinue
 
-    # ================== FIX DNS 4 ==================
-    # Esperar hasta que DNS responda realmente
+    # Esperar a que DNS responda
     $dnsReady = $false
     for ($i=0; $i -lt 10; $i++) {
         try {
@@ -131,26 +157,6 @@ function Configure-Network-Services {
         Read-Host "Enter..."
         return
     }
-
-    # ---------------- LEASE ----------------
-    while($true){
-        $lease = Read-Host "Tiempo concesion en minutos"
-        if($lease -match "^[0-9]+$" -and [int]$lease -gt 0){
-            $LEASE_TIME = [TimeSpan]::FromMinutes([int]$lease)
-            break
-        }
-        Write-Host "Debe ser numero entero positivo." -ForegroundColor Red
-    }
-
-    # ---------------- INTERFAZ ----------------
-    $interface = Get-NetAdapter | Where {$_.Status -eq "Up"} | Select -First 1
-    $ifName = $interface.Name
-
-    Remove-NetIPAddress -InterfaceAlias $ifName -Confirm:$false -ErrorAction SilentlyContinue
-    New-NetIPAddress -InterfaceAlias $ifName -IPAddress $ip_srv -PrefixLength 24 -DefaultGateway $gateway -ErrorAction SilentlyContinue
-
-    Start-Sleep -Seconds 5
-    Set-DnsClientServerAddress -InterfaceAlias $ifName -ServerAddresses $ip_srv
 
     # ---------------- DHCP ----------------
     $existingScope = Get-DhcpServerv4Scope -ErrorAction SilentlyContinue
@@ -170,9 +176,10 @@ function Configure-Network-Services {
 
     Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 6 -Value $dnsValues
 
-    Restart-Service DHCPServer, DNS -Force
+    Restart-Service DHCPServer
+    Restart-Service DNS
 
-    Write-Host "`n=== CONFIGURACION APLICADA SIN ERRORES ===" -ForegroundColor Green
+    Write-Host "`n=== CONFIGURACION APLICADA ===" -ForegroundColor Green
     Read-Host "Presiona Enter..."
 }
 
