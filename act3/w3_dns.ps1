@@ -1,6 +1,6 @@
 # ---------- FUNCION 1 ----------
 function Install-Roles {
-    Reset-Console
+    Clear-Host
     Write-Host "=== INSTALANDO DHCP Y DNS ===" -ForegroundColor Cyan
     
     $dhcp = Get-WindowsFeature DHCP
@@ -20,7 +20,7 @@ function Install-Roles {
 
 # ---------- FUNCION 2 ----------
 function Configure-Network-Services {
-    Reset-Console
+    Clear-Host
     Write-Host "=== CONFIGURACION DHCP + DNS ===" -ForegroundColor Yellow
 
     # ---------------- IP INICIAL ----------------
@@ -175,7 +175,7 @@ function Configure-Network-Services {
 }
 # ---------- FUNCION 3 ----------
 function Check-Status {
-    Reset-Console
+    Clear-Host
     Write-Host "=== ESTADO SERVICIOS ===" -ForegroundColor Cyan
     
     Get-Service DHCPServer | Select Status,DisplayName
@@ -197,7 +197,7 @@ function Check-Status {
 
 # ---------- FUNCION 4 ----------
 function Create-Domain {
-    Reset-Console
+    Clear-Host
     Write-Host "=== CREAR DOMINIO ===" -ForegroundColor Cyan
     $domain = Read-Host "Nombre dominio (ej. empresa.local)"
 
@@ -230,7 +230,7 @@ function Create-Domain {
 
 # ---------- FUNCION 5 ----------
 function Show-Domains {
-    Reset-Console
+    Clear-Host
     Write-Host "=== LISTA DOMINIOS ===" -ForegroundColor Yellow
 
     $zones = Get-DnsServerZone | Where {$_.ZoneType -eq "Primary"}
@@ -246,7 +246,7 @@ function Show-Domains {
 
 # ---------- FUNCION 6 ----------
 function Delete-Domain {
-    Reset-Console
+    Clear-Host
     Write-Host "=== ELIMINAR DOMINIO ===" -ForegroundColor Red
 
     $domain = Read-Host "Dominio a eliminar"
@@ -263,16 +263,14 @@ function Delete-Domain {
     Read-Host "Enter..."
 }
 
-function Reset-Console {
-    $raw = $Host.UI.RawUI
-    $size = $raw.WindowSize
-    $raw.BufferSize = New-Object Management.Automation.Host.Size ($size.Width, $size.Height)
-    $raw.Clear()
+function Clear-ScreenFix {
+    [Console]::Clear()
+    $Host.UI.RawUI.FlushInputBuffer()
 }
 
 # ---------- MENU ----------
 while($true){
-    Reset-Console
+    Clear-Host
     Write-Host "----------------------------------"
     Write-Host " ADMINISTRADOR DHCP + DNS SERVER "
     Write-Host "----------------------------------"
@@ -282,7 +280,7 @@ while($true){
     Write-Host "4. Crear Dominio"
     Write-Host "5. Consultar Dominios"
     Write-Host "6. Eliminar Dominio"
-    Write-Host "7. Limpiar Pantalla"
+    Write-Host "7. limpiar pantalla"
     Write-Host "8. Salir"
 
     $op = Read-Host "Seleccione opcion"
@@ -294,7 +292,7 @@ while($true){
         "4" { Create-Domain }
         "5" { Show-Domains }
         "6" { Delete-Domain }
-	"7" { Reset-Console }
+	"7" { Clear-Host }
         "8" { exit }
         default { Write-Host "Opcion invalida."; Start-Sleep 1 }
     }
