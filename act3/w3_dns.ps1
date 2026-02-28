@@ -125,9 +125,12 @@ function Configure-Network-Services {
     Start-Sleep -Seconds 2
 
     # Forzar DNS a escuchar en la IP real
-    Set-DnsServerSetting -ListenAddresses $ip_srv
     Restart-Service DNS
     Start-Sleep -Seconds 3
+
+    # Asegurar que el propio servidor se use como DNS
+    Set-DnsClientServerAddress -InterfaceAlias $ifName -ServerAddresses $ip_srv
+    Start-Sleep -Seconds 2
 
     # Crear zona reversa automática
     $networkID = ($ip_srv.Split(".")[0..2] -join ".")
@@ -175,6 +178,15 @@ function Configure-Network-Services {
     if ($dns2) { $dnsValues += $dns2 }
 
     Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 6 -Value $dnsValues
+
+    try {
+    Resolve-DnsName localhost -Server $ip_srv -ErrorAction Stop
+}
+catch {
+    Write-Host "DNS no responde correctamente." -ForegroundColor Red
+    Read-Host "Enter..."
+    return
+}
 
     Restart-Service DHCPServer
     Restart-Service DNS
