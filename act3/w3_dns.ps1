@@ -178,6 +178,7 @@ function Configure-Network-Services {
     if ($dns2) { $dnsValues += $dns2 }
 
     Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 6 -Value $dnsValues
+    Set-DhcpServerv4OptionValue -ScopeId $scopeId -Router $ip_srv
 
     try {
     Resolve-DnsName localhost -Server $ip_srv -ErrorAction Stop
