@@ -136,6 +136,12 @@ function Configure-Network-Services {
         Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 3 -Value $gateway -Force
     }
 
+   $domainName = (Get-DnsServerZone | Where {$_.ZoneType -eq "Primary" -and $_.ZoneName -notlike "*in-addr.arpa"} | Select -First 1).ZoneName
+
+    if ($domainName) {
+    	Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 15 -Value $domainName -Force
+    }
+
     Restart-Service DHCPServer
     Restart-Service DNS
 
