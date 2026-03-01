@@ -1,108 +1,70 @@
 # ---------- FUNCION 1 ----------
 function Install-Roles {
     Clear-Host
-    Write-Host "=== INSTALANDO DHCP Y DNS ===" -ForegroundColor Cyan
-    
-    $dhcp = Get-WindowsFeature DHCP
-    $dns  = Get-WindowsFeature DNS
+    Write-Host "=== INSTALACION DHCP Y DNS ===" -ForegroundColor Cyan
 
-    if (-not $dhcp.Installed) {
+    # DHCP
+    $dhcp = Get-WindowsFeature DHCP
+    if ($dhcp.Installed) {
+        Write-Host "DHCP ya esta instalado." -ForegroundColor Yellow
+        $resp = Read-Host "Deseas REINSTALAR DHCP? (y/n)"
+        if ($resp -match "^[yY]$") {
+            Uninstall-WindowsFeature DHCP -IncludeManagementTools
+            Install-WindowsFeature DHCP -IncludeManagementTools
+        }
+    }
+    else {
         Install-WindowsFeature DHCP -IncludeManagementTools
     }
 
-    if (-not $dns.Installed) {
+    # DNS
+    $dns = Get-WindowsFeature DNS
+    if ($dns.Installed) {
+        Write-Host "DNS ya esta instalado." -ForegroundColor Yellow
+        $resp = Read-Host "Deseas REINSTALAR DNS? (y/n)"
+        if ($resp -match "^[yY]$") {
+            Uninstall-WindowsFeature DNS -IncludeManagementTools
+            Install-WindowsFeature DNS -IncludeManagementTools
+        }
+    }
+    else {
         Install-WindowsFeature DNS -IncludeManagementTools
     }
 
-    Write-Host "Roles verificados/instalados correctamente." -ForegroundColor Green
+    Write-Host "Proceso completado." -ForegroundColor Green
     Read-Host "Presiona Enter..."
 }
-
 # ---------- FUNCION 2 ----------
 
 function Configure-Network-Services {
+
     Clear-Host
-    Write-Host "=== CONFIGURACION DHCP + DNS ===" -ForegroundColor Yellow
+    Write-Host "=== CONFIGURACION DHCP + DNS ESTABLE ===" -ForegroundColor Yellow
 
-    # ---------------- IP INICIAL ----------------
-    while($true){
-        $IP_INI = Read-Host "IP Inicial (ej. 192.168.100.20)"
-        if(
-            $IP_INI -match '^(\d{1,3}\.){3}\d{1,3}$' -and
-            ($IP_INI.Split('.') | ForEach-Object {[int]$_ -ge 0 -and [int]$_ -le 255}) -notcontains $false
-        ){ break }
-        Write-Host "IP invalida." -ForegroundColor Red
-    }
+    # IP SERVIDOR
+    $ip_srv = Read-Host "IP del servidor (ej 192.168.10.10)"
+    $mask = Read-Host "Mascara (Enter = 255.255.255.0)"
+    if ([string]::IsNullOrWhiteSpace($mask)) { $mask = "255.255.255.0" }
 
-    # ---------------- IP FINAL ----------------
-    while($true){
-        $IP_FIN = Read-Host "IP Final (ej. 192.168.100.30)"
-        if(
-            $IP_FIN -match '^(\d{1,3}\.){3}\d{1,3}$' -and
-            ($IP_FIN.Split('.') | ForEach-Object {[int]$_ -ge 0 -and [int]$_ -le 255}) -notcontains $false
-        ){ break }
-        Write-Host "IP invalida." -ForegroundColor Red
-    }
-
-    $ipObjIni = [ipaddress]$IP_INI
-    $ipObjFin = [ipaddress]$IP_FIN
-
-    if([uint32]$ipObjFin.Address -lt [uint32]$ipObjIni.Address){
-        Write-Host "La IP final no puede ser menor que la inicial." -ForegroundColor Red
-        Read-Host "Enter..."
-        return
-    }
-
-    $ip_srv = $IP_INI
-
-    $iniOct = $IP_INI.Split(".")
-    $finOct = $IP_FIN.Split(".")
-
-    $iniLast = [int]$iniOct[3] + 1
-    $finLast = [int]$finOct[3] + 1
-
-    if($iniLast -gt 255 -or $finLast -gt 255){
-        Write-Host "El rango excede 255 al recorrer +1." -ForegroundColor Red
-        Read-Host "Enter..."
-        return
-    }
-
-    $IP_INI_REAL = "$($iniOct[0]).$($iniOct[1]).$($iniOct[2]).$iniLast"
-    $IP_FIN_REAL = "$($finOct[0]).$($finOct[1]).$($finOct[2]).$finLast"
-
-    # ---------------- MASCARA ----------------
-    $mask = Read-Host "Mascara (Enter para 255.255.255.0)"
-    if([string]::IsNullOrWhiteSpace($mask)){ $mask = "255.255.255.0" }
-
-    # ---------------- GATEWAY ----------------
     $gateway = Read-Host "Gateway (Enter para omitir)"
 
-    # ---------------- DNS ----------------
-    $dns2 = ""
-    $dns1 = Read-Host "DNS Primario (Enter para omitir)"
-    if($dns1){ $dns2 = Read-Host "DNS Secundario (Enter para omitir)" }
+    # RANGO DHCP
+    $IP_INI_REAL = Read-Host "IP inicio rango DHCP (ej 192.168.10.20)"
+    $IP_FIN_REAL = Read-Host "IP fin rango DHCP (ej 192.168.10.30)"
 
-    # ---------------- LEASE ----------------
-    while($true){
-        $lease = Read-Host "Tiempo concesion en minutos"
-        if($lease -match "^[0-9]+$" -and [int]$lease -gt 0){
-            $LEASE_TIME = [TimeSpan]::FromMinutes([int]$lease)
-            break
-        }
-        Write-Host "Debe ser numero entero positivo." -ForegroundColor Red
-    }
+    $LEASE_TIME = New-TimeSpan -Minutes 60
 
-    # ---------------- INTERFAZ ----------------
+    # INTERFAZ ACTIVA
     $interface = Get-NetAdapter | Where {$_.Status -eq "Up"} | Select -First 1
     $ifName = $interface.Name
 
-    # ELIMINAR TODAS LAS IPs IPv4
+    # LIMPIAR IPs
     Get-NetIPAddress -InterfaceAlias $ifName -AddressFamily IPv4 -ErrorAction SilentlyContinue |
         Remove-NetIPAddress -Confirm:$false -ErrorAction SilentlyContinue
 
-    Start-Sleep -Seconds 2
+    Start-Sleep 2
 
-    # CREAR IP LIMPIA
+    # ASIGNAR IP FIJA
     try {
         if ($gateway) {
             New-NetIPAddress -InterfaceAlias $ifName -IPAddress $ip_srv -PrefixLength 24 -DefaultGateway $gateway -ErrorAction Stop
@@ -112,87 +74,67 @@ function Configure-Network-Services {
         }
     }
     catch {
-        Write-Host "Error configurando IP. Verifica que no exista conflicto." -ForegroundColor Red
+        Write-Host "Error asignando IP. Puede estar en uso." -ForegroundColor Red
         Read-Host "Enter..."
         return
     }
 
-    Start-Sleep -Seconds 3
+    Start-Sleep 3
+
+    # EL SERVIDOR SE USA COMO DNS
     Set-DnsClientServerAddress -InterfaceAlias $ifName -ServerAddresses $ip_srv
 
-    # ---------------- DNS SERVER ----------------
-    Start-Service DNS -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
+    # REINICIAR DNS
+    Restart-Service DNS -ErrorAction SilentlyContinue
+    Start-Sleep 3
 
-    # Forzar DNS a escuchar en la IP real
-    Restart-Service DNS
-    Start-Sleep -Seconds 3
-
-    # Asegurar que el propio servidor se use como DNS
-    Set-DnsClientServerAddress -InterfaceAlias $ifName -ServerAddresses $ip_srv
-    Start-Sleep -Seconds 2
-
-    # Crear zona reversa automática
+    # CREAR ZONA REVERSA AUTOMATICA
     $networkID = ($ip_srv.Split(".")[0..2] -join ".")
-    $reverseZone = ($networkID.Split(".")[2..0] -join ".") + ".in-addr.arpa"
-
-    if (-not (Get-DnsServerZone -Name $reverseZone -ErrorAction SilentlyContinue)) {
-        Add-DnsServerPrimaryZone -NetworkID "$networkID/24" -ZoneFile "$reverseZone.dns"
+    if (-not (Get-DnsServerZone | Where {$_.ZoneName -like "*in-addr.arpa"})) {
+        Add-DnsServerPrimaryZone -NetworkID "$networkID/24"
     }
 
-    # Forwarder público
-    Set-DnsServerForwarder -IPAddress 8.8.8.8 -ErrorAction SilentlyContinue
-
-    # Esperar a que DNS responda
-    $dnsReady = $false
-    for ($i=0; $i -lt 10; $i++) {
-        try {
-            Resolve-DnsName localhost -Server $ip_srv -ErrorAction Stop
-            $dnsReady = $true
-            break
-        } catch {
-            Start-Sleep -Seconds 1
-        }
+    # VERIFICAR DNS
+    try {
+        Resolve-DnsName localhost -Server $ip_srv -ErrorAction Stop
     }
-
-    if (-not $dnsReady) {
-        Write-Host "DNS no pudo iniciar correctamente." -ForegroundColor Red
+    catch {
+        Write-Host "DNS no responde correctamente." -ForegroundColor Red
         Read-Host "Enter..."
         return
     }
 
-    # ---------------- DHCP ----------------
-    $existingScope = Get-DhcpServerv4Scope -ErrorAction SilentlyContinue
-    if ($existingScope) {
-        foreach ($s in $existingScope) { Remove-DhcpServerv4Scope -ScopeId $s.ScopeId -Force }
+    # ELIMINAR AMBITOS EXISTENTES
+    Get-DhcpServerv4Scope -ErrorAction SilentlyContinue |
+        ForEach-Object { Remove-DhcpServerv4Scope -ScopeId $_.ScopeId -Force }
+
+    # CREAR NUEVO AMBITO
+    Add-DhcpServerv4Scope -Name "Scope_Principal" `
+        -StartRange $IP_INI_REAL `
+        -EndRange $IP_FIN_REAL `
+        -SubnetMask $mask `
+        -LeaseDuration $LEASE_TIME `
+        -State Active
+
+    Start-Sleep 2
+
+    $scopeId = (Get-DhcpServerv4Scope | Where {$_.Name -eq "Scope_Principal"}).ScopeId
+
+    # ACTIVAR BINDING
+    Set-DhcpServerv4Binding -InterfaceAlias $ifName -BindingState $true
+
+    # OPTION 006 DNS
+    Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 6 -Value $ip_srv -Force
+
+    # OPTION 003 ROUTER (SI EXISTE)
+    if ($gateway) {
+        Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 3 -Value $gateway -Force
     }
-
-    Add-DhcpServerv4Scope -Name "Scope_Principal" -StartRange $IP_INI_REAL -EndRange $IP_FIN_REAL -SubnetMask $mask -LeaseDuration $LEASE_TIME
-    Start-Sleep -Seconds 2
-
-    $scopeId = (Get-DhcpServerv4Scope | Where-Object { $_.Name -eq "Scope_Principal" }).ScopeId
-
-    Set-DhcpServerv4Binding -InterfaceAlias $ifName -BindingState $true -ErrorAction SilentlyContinue
-
-    $dnsValues = @($ip_srv)
-    if ($dns2) { $dnsValues += $dns2 }
-
-    Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 6 -Value $dnsValues
-    Set-DhcpServerv4OptionValue -ScopeId $scopeId -Router $ip_srv
-
-    try {
-    Resolve-DnsName localhost -Server $ip_srv -ErrorAction Stop
-}
-catch {
-    Write-Host "DNS no responde correctamente." -ForegroundColor Red
-    Read-Host "Enter..."
-    return
-}
 
     Restart-Service DHCPServer
     Restart-Service DNS
 
-    Write-Host "`n=== CONFIGURACION APLICADA ===" -ForegroundColor Green
+    Write-Host "`n=== DHCP Y DNS CONFIGURADOS CORRECTAMENTE ===" -ForegroundColor Green
     Read-Host "Presiona Enter..."
 }
 
