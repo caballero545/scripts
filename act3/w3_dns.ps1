@@ -142,6 +142,7 @@ function Configure-Network-Services {
     	Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 15 -Value $domainName -Force
     }
 
+    Set-DhcpServerv4OptionValue -DnsServer $ip_srv -Force
     Restart-Service DHCPServer
     Restart-Service DNS
 
