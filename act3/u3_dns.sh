@@ -157,25 +157,35 @@ eliminar_dominio() {
     read -p "Ingrese el nombre del dominio a eliminar: " D
     [[ -z "$D" ]] && return
 
-    # Verificamos si el dominio existe en el archivo de configuración
-    if grep -q "zone \"$D\"" /etc/bind/named.conf.local; then
+    CONFIG="/etc/bind/named.conf.local"
+    ZONEFILE="/etc/bind/db.$D"
+
+    if grep -q "zone \"$D\"" "$CONFIG"; then
         echo -e "\e[33m[!] Eliminando dominio $D...\e[0m"
-        
-        # Elimina la zona del archivo de configuración
-        sudo sed -i "/zone \"$D\"/,/};/d" /etc/bind/named.conf.local
-        
-        # Borra el archivo de zona físico
-        sudo rm -f "/etc/bind/db.$D"
-        
-        # Reinicia para aplicar cambios
+
+        # Crear backup antes de modificar
+        sudo cp "$CONFIG" "$CONFIG.bak"
+
+        # Eliminar SOLO el bloque exacto usando awk
+        sudo awk -v domain="$D" '
+        $0 ~ "zone \""domain"\"" {delete_block=1}
+        delete_block && /};/ {delete_block=0; next}
+        !delete_block
+        ' "$CONFIG.bak" | sudo tee "$CONFIG" > /dev/null
+
+        # Eliminar archivo de zona si existe
+        [[ -f "$ZONEFILE" ]] && sudo rm -f "$ZONEFILE"
+
+        # Reiniciar servicio
         sudo systemctl restart bind9
+
         echo -e "\e[32m[OK] Dominio '$D' eliminado correctamente.\e[0m"
     else
         echo -e "\e[31m[ERROR] El dominio '$D' no existe en el sistema.\e[0m"
     fi
+
     read -p "Presione Enter para continuar..."
 }
-
 # --- 6. CHECK STATUS MEJORADO ---
 check_status() {
     clear
