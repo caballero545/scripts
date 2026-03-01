@@ -52,7 +52,14 @@ function Configure-Network-Services {
     $IP_INI_REAL = Read-Host "IP inicio rango DHCP (ej 192.168.10.20)"
     $IP_FIN_REAL = Read-Host "IP fin rango DHCP (ej 192.168.10.30)"
 
-    $LEASE_TIME = New-TimeSpan -Minutes 60
+    # TIEMPO DE CONCESION EN SEGUNDOS
+    $leaseSeconds = Read-Host "Tiempo de concesion en segundos (ej 3600)"
+    if (-not [int]::TryParse($leaseSeconds, [ref]$null)) {
+        Write-Host "Tiempo invalido. Se usara 3600 segundos." -ForegroundColor Yellow
+        $leaseSeconds = 3600
+    }
+
+    $LEASE_TIME = New-TimeSpan -Seconds $leaseSeconds
 
     # INTERFAZ ACTIVA
     $interface = Get-NetAdapter | Where {$_.Status -eq "Up"} | Select -First 1
@@ -84,11 +91,10 @@ function Configure-Network-Services {
     # EL SERVIDOR SE USA COMO DNS
     Set-DnsClientServerAddress -InterfaceAlias $ifName -ServerAddresses $ip_srv
 
-    # REINICIAR DNS
     Restart-Service DNS -ErrorAction SilentlyContinue
     Start-Sleep 3
 
-    # CREAR ZONA REVERSA AUTOMATICA
+    # ZONA REVERSA
     $networkID = ($ip_srv.Split(".")[0..2] -join ".")
     if (-not (Get-DnsServerZone | Where {$_.ZoneName -like "*in-addr.arpa"})) {
         Add-DnsServerPrimaryZone -NetworkID "$networkID/24"
@@ -104,11 +110,11 @@ function Configure-Network-Services {
         return
     }
 
-    # ELIMINAR AMBITOS EXISTENTES
+    # BORRAR AMBITOS ANTERIORES
     Get-DhcpServerv4Scope -ErrorAction SilentlyContinue |
         ForEach-Object { Remove-DhcpServerv4Scope -ScopeId $_.ScopeId -Force }
 
-    # CREAR NUEVO AMBITO
+    # CREAR AMBITO
     Add-DhcpServerv4Scope -Name "Scope_Principal" `
         -StartRange $IP_INI_REAL `
         -EndRange $IP_FIN_REAL `
@@ -120,13 +126,12 @@ function Configure-Network-Services {
 
     $scopeId = (Get-DhcpServerv4Scope | Where {$_.Name -eq "Scope_Principal"}).ScopeId
 
-    # ACTIVAR BINDING
     Set-DhcpServerv4Binding -InterfaceAlias $ifName -BindingState $true
 
     # OPTION 006 DNS
     Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 6 -Value $ip_srv -Force
 
-    # OPTION 003 ROUTER (SI EXISTE)
+    # OPTION 003 ROUTER
     if ($gateway) {
         Set-DhcpServerv4OptionValue -ScopeId $scopeId -OptionId 3 -Value $gateway -Force
     }
