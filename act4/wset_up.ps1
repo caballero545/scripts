@@ -15,4 +15,4 @@ Write-Host "Asegúrate de que el usuario '$env:USERNAME' tenga contraseña estab
 # 4. Mostrar IP
 $ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -like "Ethernet*"}).IPAddress | Select-Object -First 1
 
-Write-Host "--- LISTO ---" -ForegroundColor Green
+Write-Host "--- LISTO ---"
