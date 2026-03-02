@@ -2,7 +2,7 @@ Write-Host "--- PREPARANDO WINDOWS SERVER PARA ADMINISTRACIÓN REMOTA ---" -Fore
 
 # 1. Instalar OpenSSH Server
 
-Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+Add-WindowsCapability -Online -Name OpenSSH.Server
 
 # 2. Iniciar y habilitar SSH y WinRM
 Start-Service sshd
@@ -16,4 +16,3 @@ Write-Host "Asegúrate de que el usuario '$env:USERNAME' tenga contraseña estab
 $ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -like "Ethernet*"}).IPAddress | Select-Object -First 1
 
 Write-Host "--- LISTO ---" -ForegroundColor Green
-Write-Host "IP del servidor Windows: $ip"
