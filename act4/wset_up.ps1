@@ -1,6 +1,7 @@
 Write-Host "--- PREPARANDO WINDOWS SERVER PARA ADMINISTRACIÓN REMOTA ---" -ForegroundColor Cyan
 
 # 1. Instalar OpenSSH Server
+
 Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
 
 # 2. Iniciar y habilitar SSH y WinRM
