@@ -63,6 +63,7 @@ function Configure-DHCP-Range {
     Write-Host "Rango: $IP_INI - $IP_FIN"
     Read-Host "Presiona [Enter] para aplicar cambios..."
     Apply-DHCP-Config
+    Pause
 }
 # --- FUNCIÓN 3: APLICAR EN WINDOWS SERVER ---
 function Apply-DHCP-Config {
