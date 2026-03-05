@@ -62,4 +62,6 @@ mkdir -p "$carpeta"
 chown -R "$usuario:$grupo" "$carpeta"
 chmod 770 "$carpeta"
 
+done
+
 echo "Usuario $usuario creado correctamente en grupo $grupo."
