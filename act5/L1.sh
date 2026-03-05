@@ -30,11 +30,15 @@ groupadd recursadores 2>/dev/null
 echo "Creando estructura base en /srv/ftp..."
 
 mkdir -p /srv/ftp/general
-mkdir -p /srv/ftp/reprobados
-mkdir -p /srv/ftp/recursadores
-mkdir -p /srv/ftp/usuarios
+mkdir -p /srv/ftp/usuarios/reprobados
+mkdir -p /srv/ftp/usuarios/recursadores
 
 # --- 3. Permisos básicos iniciales ---
+chmod 777 /srv/ftp/general
+chown root:reprobados /srv/ftp/usuarios/reprobados
+chown root:recursadores /srv/ftp/usuarios/recursadores
+chmod 770 /srv/ftp/usuarios/reprobados
+chmod 770 /srv/ftp/usuarios/recursadores
 chmod 755 /srv/ftp
 chmod 755 /srv/ftp/general
 

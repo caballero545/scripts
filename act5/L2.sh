@@ -1,6 +1,6 @@
 #!/bin/bash
 
-BASE="/srv/ftp/usuarios"
+BASE="/srv/ftp"
 
 echo "=============================="
 echo " CREACION DE USUARIOS FTP"
@@ -8,10 +8,10 @@ echo "=============================="
 
 read -p "Cuantos usuarios deseas crear: " n
 
-# validar que sea numero
+# validar número
 if ! [[ "$n" =~ ^[0-9]+$ ]]; then
-    echo "Debes ingresar un numero."
-    exit
+echo "Debes escribir un número."
+exit
 fi
 
 for ((i=1;i<=n;i++))
@@ -22,10 +22,11 @@ echo "------ Usuario $i ------"
 
 read -p "Nombre de usuario: " usuario
 
+# verificar si existe
 if id "$usuario" &>/dev/null; then
-    echo "El usuario ya existe."
-    i=$((i-1))
-    continue
+echo "El usuario ya existe."
+i=$((i-1))
+continue
 fi
 
 read -s -p "Contraseña: " pass
@@ -38,32 +39,34 @@ echo "2) recursadores"
 read -p "Seleccione: " grp
 
 if [ "$grp" == "1" ]; then
-    grupo="reprobados"
+grupo="reprobados"
 elif [ "$grp" == "2" ]; then
-    grupo="recursadores"
+grupo="recursadores"
 else
-    echo "Grupo inválido"
-    i=$((i-1))
-    continue
+echo "Grupo inválido"
+i=$((i-1))
+continue
 fi
 
 # carpeta personal
-carpeta="$BASE/$grupo/$usuario"
+carpeta="$BASE/$usuario"
 
-mkdir -p "$BASE/$grupo"
-
-useradd -m -d "$carpeta" -s /sbin/nologin -g "$grupo" "$usuario"
+# crear usuario
+useradd -d "$carpeta" -s /sbin/nologin -g "$grupo" "$usuario"
 
 echo "$usuario:$pass" | chpasswd
 
+# crear carpeta personal
 mkdir -p "$carpeta"
 
-chown -R "$usuario:$grupo" "$carpeta"
+# permisos
+chown "$usuario:$grupo" "$carpeta"
 chmod 770 "$carpeta"
 
-echo "Usuario $usuario creado correctamente en grupo $grupo."
+echo "Usuario $usuario creado en grupo $grupo."
 
 done
 
 echo ""
 echo "Usuarios creados correctamente."
+read -p "Presiona ENTER para continuar..."
