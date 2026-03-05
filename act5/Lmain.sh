@@ -34,7 +34,7 @@ read -p "Presiona ENTER para continuar"
 ;;
 
 3)
-bash ./permisos_ftp.sh
+bash ./L3.sh
 read -p "Presiona ENTER para continuar"
 ;;
 
