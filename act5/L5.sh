@@ -1,21 +1,32 @@
 #!/bin/bash
 
-echo "===== USUARIOS FTP REGISTRADOS ====="
+BASE="/srv/ftp/usuarios"
+
+echo "================================="
+echo " USUARIOS FTP REGISTRADOS"
+echo "================================="
 echo ""
-
 printf "%-15s %-15s %-30s\n" "USUARIO" "GRUPO" "CARPETA"
-echo "--------------------------------------------------------------"
+echo "-------------------------------------------------------------"
 
-for user in $(ls /srv/ftp/usuarios)
+total=0
+
+for grupo in reprobados recursadores
 do
+    for carpeta in $BASE/$grupo/*
+    do
+        if [ -d "$carpeta" ]; then
+            usuario=$(basename "$carpeta")
 
-    grupo=$(id -gn $user 2>/dev/null)
+            printf "%-15s %-15s %-30s\n" "$usuario" "$grupo" "$carpeta"
 
-    carpeta="/srv/ftp/usuarios/$user"
-
-    printf "%-15s %-15s %-30s\n" "$user" "$grupo" "$carpeta"
-
+            total=$((total+1))
+        fi
+    done
 done
 
 echo ""
-echo "Total usuarios: $(ls /srv/ftp/usuarios | wc -l)"
+echo "Total usuarios: $total"
+
+echo ""
+read -p "Presiona ENTER para continuar..."
