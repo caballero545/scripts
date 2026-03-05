@@ -21,6 +21,11 @@ else
     echo "vsftpd ya está instalado."
 fi
 
+echo "Creando grupos necesarios..."
+
+groupadd reprobados 2>/dev/null
+groupadd recursadores 2>/dev/null
+
 # --- 2. Crear estructura base ---
 echo "Creando estructura base en /srv/ftp..."
 
