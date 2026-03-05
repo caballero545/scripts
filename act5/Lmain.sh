@@ -18,6 +18,7 @@ echo "2) Crear usuarios FTP"
 echo "3) Configurar permisos FTP"
 echo "4) Cambiar grupo de usuario"
 echo "5) Ver usuarios FTP"
+echo "6) Eliminar usuario FTP"
 echo "0) Salir"
 echo "================================="
 
@@ -48,6 +49,10 @@ read -p "Presiona ENTER para continuar"
 5)
 bash ./L5.sh
 read -p "Presiona ENTER para continuar"
+;;
+
+6)
+bash ./L6.sh
 ;;
 
 0)
