@@ -10,28 +10,29 @@ echo ""
 echo "Usuarios FTP existentes:"
 echo "------------------------"
 
-# mostrar usuarios dentro de carpetas FTP
-find $BASE -mindepth 2 -maxdepth 2 -type d -printf "%f\n"
+find "$BASE" -mindepth 2 -maxdepth 2 -type d -printf "%f\n"
 
 echo ""
 read -p "Escribe el nombre del usuario a eliminar: " usuario
 
 # verificar si existe
-if id "$usuario" &>/dev/null; then
-
-    echo "Eliminando usuario..."
-
-    sudo userdel -r "$usuario"
-
-    # borrar carpeta si quedara algo
-    rm -rf $BASE/reprobados/$usuario
-    rm -rf $BASE/recursadores/$usuario
-
-    echo "Usuario eliminado correctamente."
-
-else
+if ! id "$usuario" &>/dev/null; then
     echo "Ese usuario no existe."
+    read -p "Presiona ENTER para continuar..."
+    exit
 fi
+
+echo ""
+echo "Eliminando usuario..."
+
+# eliminar usuario sin mostrar advertencias
+userdel -r "$usuario" 2>/dev/null
+
+# borrar carpetas por seguridad
+rm -rf "$BASE/reprobados/$usuario"
+rm -rf "$BASE/recursadores/$usuario"
+
+echo "Usuario eliminado correctamente."
 
 echo ""
 read -p "Presiona ENTER para continuar..."
