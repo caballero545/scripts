@@ -23,12 +23,12 @@ read -p "Seleccione una opcion: " op
 case $op in
 
 1)
-bash ./instalar_ftp.sh
+bash ./L1.sh
 read -p "Presiona ENTER para continuar"
 ;;
 
 2)
-bash ./usuarios_ftp.sh
+bash ./L2.sh
 read -p "Presiona ENTER para continuar"
 ;;
 
