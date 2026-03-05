@@ -1,6 +1,6 @@
 #!/bin/bash
 
-BASE="/srv/ftp"
+BASE="/srv/ftp/usuarios"
 
 echo "=============================="
 echo " CREACION DE USUARIOS FTP"
@@ -15,6 +15,14 @@ echo ""
 echo "------ Usuario $i ------"
 
 read -p "Nombre de usuario: " usuario
+
+if id "$usuario" &>/dev/null; then
+echo "El usuario ya existe."
+i=$((i-1))
+continue
+fi
+
+
 read -s -p "Contraseña: " pass
 echo ""
 
@@ -33,24 +41,25 @@ echo "Grupo inválido"
 exit
 fi
 
-# Crear usuario en Linux
-useradd -m -d $BASE/usuarios/$usuario -s /usr/sbin/nologin $usuario
+BASE="/srv/ftp/usuarios"
 
+# carpeta personal del usuario dentro del grupo
+carpeta="$BASE/$grupo/$usuario"
+
+# asegurar que exista la carpeta del grupo
+mkdir -p "$BASE/$grupo"
+
+# Crear usuario en Linux
+useradd -m -d "$carpeta" -s /sbin/nologin -g "$grupo" "$usuario"
+
+# asignar contraseña
 echo "$usuario:$pass" | chpasswd
 
-# agregar a grupo
-usermod -aG $grupo $usuario
-
-# Crear carpeta personal
-mkdir -p $BASE/usuarios/$usuario
+# asegurar carpeta personal
+mkdir -p "$carpeta"
 
 # Permisos
-chown $usuario:$grupo $BASE/usuarios/$usuario
-chmod 770 $BASE/usuarios/$usuario
+chown -R "$usuario:$grupo" "$carpeta"
+chmod 770 "$carpeta"
 
-echo "Usuario $usuario creado correctamente."
-
-done
-
-echo ""
-echo "Usuarios creados correctamente."
+echo "Usuario $usuario creado correctamente en grupo $grupo."
