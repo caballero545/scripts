@@ -35,7 +35,7 @@ chmod 755 /srv/ftp/general
 
 # (Los permisos finos se asignarán después en fase de usuarios)
 
-# --- 4. Configuración de vsftpd ---
+# --- 4. vsftpd ---
 echo "Configurando vsftpd..."
 
 cp /etc/vsftpd.conf /etc/vsftpd.conf.bak
