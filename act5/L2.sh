@@ -1,6 +1,6 @@
 #!/bin/bash
 
-BASE="/srv/ftp"
+BASE="/srv/ftp/usuarios"
 
 echo "=============================="
 echo " CREACION DE USUARIOS FTP"
@@ -48,15 +48,18 @@ i=$((i-1))
 continue
 fi
 
-# carpeta personal
-carpeta="$BASE/$usuario"
+# carpeta personal correcta
+carpeta="$BASE/$grupo/$usuario"
+
+# asegurar carpeta de grupo
+mkdir -p "$BASE/$grupo"
 
 # crear usuario
 useradd -d "$carpeta" -s /sbin/nologin -g "$grupo" "$usuario"
 
 echo "$usuario:$pass" | chpasswd
 
-# crear carpeta personal
+# crear carpeta
 mkdir -p "$carpeta"
 
 # permisos
@@ -69,4 +72,5 @@ done
 
 echo ""
 echo "Usuarios creados correctamente."
+
 read -p "Presiona ENTER para continuar..."
