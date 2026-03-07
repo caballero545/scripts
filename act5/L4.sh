@@ -60,6 +60,14 @@ echo "Actualizando permisos..."
 
 chown -R "$usuario:$nuevo_grupo" "$BASE/$nuevo_grupo/$usuario"
 
+VHOME="/srv/ftp/vhome"
+HOMEUSER="$VHOME/$usuario"
+
+rm -f $HOMEUSER/reprobados
+rm -f $HOMEUSER/recursadores
+
+ln -s $BASE/$nuevo_grupo $HOMEUSER/$nuevo_grupo
+
 echo ""
 echo "Grupo cambiado correctamente."
 echo "El usuario ahora pertenece a: $nuevo_grupo"

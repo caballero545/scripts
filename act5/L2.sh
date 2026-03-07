@@ -1,6 +1,8 @@
 #!/bin/bash
 
 BASE="/srv/ftp/usuarios"
+VHOME="/srv/ftp/vhome"
+FTP="/srv/ftp"
 
 echo "=============================="
 echo " CREACION DE USUARIOS FTP"
@@ -8,7 +10,6 @@ echo "=============================="
 
 read -p "Cuantos usuarios deseas crear: " n
 
-# validar número
 if ! [[ "$n" =~ ^[0-9]+$ ]]; then
 echo "Debes escribir un número."
 exit
@@ -22,7 +23,6 @@ echo "------ Usuario $i ------"
 
 read -p "Nombre de usuario: " usuario
 
-# verificar si existe
 if id "$usuario" &>/dev/null; then
 echo "El usuario ya existe."
 i=$((i-1))
@@ -48,25 +48,29 @@ i=$((i-1))
 continue
 fi
 
-# carpeta personal correcta
 carpeta="$BASE/$grupo/$usuario"
+home="$VHOME/$usuario"
 
-# asegurar carpeta de grupo
-mkdir -p "$BASE/$grupo"
+mkdir -p "$carpeta"
+mkdir -p "$home"
 
-# crear usuario
-useradd -d "$carpeta" -s /sbin/nologin -g "$grupo" "$usuario"
+useradd -d "$home" -s /sbin/nologin -g "$grupo" "$usuario"
 
 echo "$usuario:$pass" | chpasswd
 
-# crear carpeta
-mkdir -p "$carpeta"
-
-# permisos
 chown "$usuario:$grupo" "$carpeta"
 chmod 770 "$carpeta"
 
-echo "Usuario $usuario creado en grupo $grupo."
+# estructura visible en FTP
+
+ln -s $FTP/general $home/general
+ln -s $BASE/$grupo $home/$grupo
+ln -s $carpeta $home/$usuario
+
+chown root:root $home
+chmod 755 $home
+
+echo "Usuario $usuario creado correctamente."
 
 done
 

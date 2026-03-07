@@ -20,7 +20,6 @@ echo "4) Cambiar grupo de usuario"
 echo "5) Ver usuarios FTP"
 echo "6) Eliminar usuario FTP"
 echo "7) Configurar FTP anonimo"
-echo "8) Preparar estructura visible FTP"
 echo "0) Salir"
 echo "================================="
 
@@ -60,11 +59,6 @@ read -p "Presiona ENTER para continuar"
 
 7)
 bash ./L7.sh
-read -p "Presiona ENTER para continuar"
-;;
-
-8)
-bash ./L8.sh
 read -p "Presiona ENTER para continuar"
 ;;
 

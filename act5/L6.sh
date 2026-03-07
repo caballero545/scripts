@@ -32,6 +32,8 @@ userdel -r "$usuario" 2>/dev/null
 rm -rf "$BASE/reprobados/$usuario"
 rm -rf "$BASE/recursadores/$usuario"
 
+rm -rf /srv/ftp/vhome/$usuario
+
 echo "Usuario eliminado correctamente."
 
 echo ""
