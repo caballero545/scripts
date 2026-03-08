@@ -2,79 +2,63 @@
 
 BASE="/srv/ftp/usuarios"
 VHOME="/srv/ftp/vhome"
-FTP="/srv/ftp"
+GENERAL="/srv/ftp/general"
 
-echo "=============================="
-echo " CREACION DE USUARIOS FTP"
-echo "=============================="
+echo "CREACION DE USUARIOS FTP"
 
 read -p "Cuantos usuarios deseas crear: " n
-
-if ! [[ "$n" =~ ^[0-9]+$ ]]; then
-echo "Debes escribir un número."
-exit
-fi
 
 for ((i=1;i<=n;i++))
 do
 
-echo ""
-echo "------ Usuario $i ------"
-
 read -p "Nombre de usuario: " usuario
 
 if id "$usuario" &>/dev/null; then
-echo "El usuario ya existe."
-i=$((i-1))
+echo "Usuario ya existe"
 continue
 fi
 
 read -s -p "Contraseña: " pass
 echo ""
 
-echo "Grupo:"
 echo "1) reprobados"
 echo "2) recursadores"
 
-read -p "Seleccione: " grp
+read -p "Grupo: " g
 
-if [ "$grp" == "1" ]; then
+if [ "$g" == "1" ]; then
 grupo="reprobados"
-elif [ "$grp" == "2" ]; then
+elif [ "$g" == "2" ]; then
 grupo="recursadores"
 else
-echo "Grupo inválido"
-i=$((i-1))
+echo "Grupo invalido"
 continue
 fi
 
-carpeta="$BASE/$grupo/$usuario"
-home="$VHOME/$usuario"
-
-mkdir -p "$carpeta"
-mkdir -p "$home"
-
-useradd -d "$home" -s /sbin/nologin -g "$grupo" "$usuario"
-
+useradd -s /sbin/nologin -g "$grupo" "$usuario"
 echo "$usuario:$pass" | chpasswd
 
-chown "$usuario:$grupo" "$carpeta"
-chmod 770 "$carpeta"
+mkdir -p $BASE/$grupo/$usuario
 
-# estructura visible en FTP
+mkdir -p $VHOME/$usuario
+mkdir -p $VHOME/$usuario/general
+mkdir -p $VHOME/$usuario/$grupo
+mkdir -p $VHOME/$usuario/$usuario
 
-ln -s $FTP/general $home/general
-ln -s $BASE/$grupo $home/$grupo
-ln -s $carpeta $home/$usuario
+cp -r $GENERAL/* $VHOME/$usuario/general 2>/dev/null
 
-chown root:root $home
-chmod 755 $home
+chown -R $usuario:$grupo $BASE/$grupo/$usuario
+chown -R $usuario:$grupo $VHOME/$usuario/$usuario
+chown -R $usuario:$grupo $VHOME/$usuario/$grupo
 
-echo "Usuario $usuario creado correctamente."
+chmod 770 $BASE/$grupo/$usuario
+chmod 770 $VHOME/$usuario/$usuario
+chmod 770 $VHOME/$usuario/$grupo
+
+usermod -d $VHOME/$usuario $usuario
+
+echo "Usuario creado."
 
 done
 
-echo ""
-echo "Usuarios creados correctamente."
-
-read -p "Presiona ENTER para continuar..."
+systemctl restart vsftpd

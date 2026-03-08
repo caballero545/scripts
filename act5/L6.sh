@@ -1,6 +1,7 @@
 #!/bin/bash
 
 BASE="/srv/ftp/usuarios"
+VHOME="/srv/ftp/vhome"
 
 echo "=============================="
 echo " ELIMINAR USUARIO FTP"
@@ -31,6 +32,7 @@ userdel -r "$usuario" 2>/dev/null
 # borrar carpetas por seguridad
 rm -rf "$BASE/reprobados/$usuario"
 rm -rf "$BASE/recursadores/$usuario"
+rm -rf "$VHOME/$usuario"
 
 rm -rf /srv/ftp/vhome/$usuario
 

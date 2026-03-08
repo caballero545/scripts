@@ -1,30 +1,17 @@
 #!/bin/bash
 
-echo "===== CONFIGURANDO PERMISOS FTP ====="
+FTP="/srv/ftp"
 
-FTP_ROOT="/srv/ftp"
-USER_ROOT="/srv/ftp/usuarios"
+chmod 755 $FTP
+chmod 755 $FTP/vhome
+chmod 777 $FTP/general
 
-# asegurar carpetas base
-mkdir -p $FTP_ROOT/general
-mkdir -p $USER_ROOT/reprobados
-mkdir -p $USER_ROOT/recursadores
+chgrp reprobados $FTP/usuarios/reprobados
+chgrp recursadores $FTP/usuarios/recursadores
 
-# permisos base
-chmod 755 $FTP_ROOT
-chmod 777 $FTP_ROOT/general
+chmod 770 $FTP/usuarios/reprobados
+chmod 770 $FTP/usuarios/recursadores
 
-# asignar grupos
-chgrp reprobados $USER_ROOT/reprobados
-chgrp recursadores $USER_ROOT/recursadores
+echo "Permisos configurados."
 
-# permisos de grupo
-chmod 770 $USER_ROOT/reprobados
-chmod 770 $USER_ROOT/recursadores
-
-# carpeta usuarios
-chmod 755 $USER_ROOT
-
-echo "Permisos configurados correctamente"
-
-read -p "Presiona ENTER para continuar..."
+systemctl restart vsftpd

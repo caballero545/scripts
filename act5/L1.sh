@@ -1,59 +1,38 @@
 #!/bin/bash
 
-# ===============================
-#  FTP SERVER BASE SETUP (LINUX)
-# ===============================
-
-# --- Verificar root ---
 if [ "$EUID" -ne 0 ]; then
-    echo "Ejecuta este script como root o con sudo."
-    exit 1
+echo "Ejecuta como root"
+exit
 fi
 
-echo "===== INICIANDO CONFIGURACIÓN BASE FTP ====="
+echo "===== CONFIGURANDO FTP ====="
 
-# --- 1. Instalación idempotente de vsftpd ---
-if ! dpkg -l | grep -q vsftpd; then
-    echo "Instalando vsftpd..."
-    apt update -y
-    apt install vsftpd -y
-else
-    echo "vsftpd ya está instalado."
-fi
-
-echo "Creando grupos necesarios..."
+apt update -y
+apt install vsftpd -y
 
 groupadd reprobados 2>/dev/null
 groupadd recursadores 2>/dev/null
 
-# --- 2. Crear estructura base ---
-echo "Creando estructura base en /srv/ftp..."
-
 mkdir -p /srv/ftp/general
-mkdir -p /srv/ftp/vhome
 mkdir -p /srv/ftp/usuarios/reprobados
 mkdir -p /srv/ftp/usuarios/recursadores
+mkdir -p /srv/ftp/vhome
 
-# --- 3. Permisos básicos iniciales ---
-chmod 777 /srv/ftp/general
-chown root:reprobados /srv/ftp/usuarios/reprobados
-chown root:recursadores /srv/ftp/usuarios/recursadores
-chmod 770 /srv/ftp/usuarios/reprobados
-chmod 770 /srv/ftp/usuarios/recursadores
+chmod 755 /srv
 chmod 755 /srv/ftp
 chmod 755 /srv/ftp/vhome
-chmod 755 /srv/ftp/general
+chmod 777 /srv/ftp/general
 
-# (Los permisos finos se asignarán después en fase de usuarios)
+chown root:reprobados /srv/ftp/usuarios/reprobados
+chown root:recursadores /srv/ftp/usuarios/recursadores
 
-# --- 4. vsftpd ---
-echo "Configurando vsftpd..."
+chmod 770 /srv/ftp/usuarios/reprobados
+chmod 770 /srv/ftp/usuarios/recursadores
 
 cp /etc/vsftpd.conf /etc/vsftpd.conf.bak
 
 cat > /etc/vsftpd.conf <<EOF
 listen=YES
-
 anonymous_enable=YES
 anon_root=/srv/ftp/general
 
@@ -68,10 +47,7 @@ pasv_min_port=40000
 pasv_max_port=40100
 EOF
 
-# --- 5. Reiniciar y habilitar servicio ---
 systemctl enable vsftpd
 systemctl restart vsftpd
 
-echo "===== CONFIGURACIÓN BASE COMPLETADA ====="
-echo "Estructura creada en /srv/ftp"
-echo "Servicio vsftpd activo."
+echo "FTP configurado."
