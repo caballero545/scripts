@@ -10,9 +10,9 @@ chmod 755 $FTP
 chmod 755 $FTP/vhome
 chmod 755 $FTP/usuarios
 
-# carpeta publica solo lectura para anonimos
+# carpeta publica abierta para que logeados puedan escribir
 chown root:root $FTP/general
-chmod 755 $FTP/general
+chmod 777 $FTP/general
 
 # carpetas de grupos
 chown root:reprobados $FTP/usuarios/reprobados
@@ -32,16 +32,13 @@ for dir in $FTP/vhome/*; do
         user=$(basename "$dir")
 
         echo "Arreglando permisos para $user"
-
-        chown -R $user:$user $dir
-
+        
+        # OJO: Solo arreglamos la raíz del vhome y su carpeta personal
+        chown root:root $dir
         chmod 755 $dir
 
+        chown -R $user:$user $dir/$user 2>/dev/null
         chmod 770 $dir/$user 2>/dev/null
-        chmod 770 $dir/reprobados 2>/dev/null
-        chmod 770 $dir/recursadores 2>/dev/null
-
-        chmod 755 $dir/general 2>/dev/null
     fi
 done
 

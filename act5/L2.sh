@@ -38,22 +38,28 @@ fi
 useradd -s /sbin/nologin -g "$grupo" "$usuario"
 echo "$usuario:$pass" | chpasswd
 
-mkdir -p $BASE/$grupo/$usuario
+mkdir -p $BASE/$grupo
 
 mkdir -p $VHOME/$usuario
 mkdir -p $VHOME/$usuario/general
 mkdir -p $VHOME/$usuario/$grupo
 mkdir -p $VHOME/$usuario/$usuario
 
-cp -r $GENERAL/* $VHOME/$usuario/general 2>/dev/null
+# En lugar de copiar, montamos las carpetas compartidas
+mount --bind $GENERAL $VHOME/$usuario/general
+mount --bind $BASE/$grupo $VHOME/$usuario/$grupo
 
-chown -R $usuario:$grupo $BASE/$grupo/$usuario
+# Guardamos el montaje en fstab para que no se borre al reiniciar
+echo "$GENERAL $VHOME/$usuario/general none bind 0 0" >> /etc/fstab
+echo "$BASE/$grupo $VHOME/$usuario/$grupo none bind 0 0" >> /etc/fstab
+
+# La raíz del chroot debe ser segura
+chown root:root $VHOME/$usuario
+chmod 755 $VHOME/$usuario
+
+# Solo le damos permisos al usuario sobre su propia carpeta personal
 chown -R $usuario:$grupo $VHOME/$usuario/$usuario
-chown -R $usuario:$grupo $VHOME/$usuario/$grupo
-
-chmod 770 $BASE/$grupo/$usuario
 chmod 770 $VHOME/$usuario/$usuario
-chmod 770 $VHOME/$usuario/$grupo
 
 usermod -d $VHOME/$usuario $usuario
 
