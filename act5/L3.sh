@@ -4,22 +4,22 @@ FTP="/srv/ftp"
 
 echo "===== ARREGLANDO PERMISOS FTP ====="
 
-chmod 755 /srv
-chmod 755 $FTP
-chmod 755 $FTP/vhome
-chmod 755 $FTP/usuarios
+sudo chmod 755 /srv
+sudo chmod 755 $FTP
+sudo chmod 755 $FTP/vhome
+sudo chmod 755 $FTP/usuarios
 
-chown root:ftpusers $FTP/general
-chmod 775 $FTP/general
+sudo chown root:ftpusers $FTP/general
+sudo chmod 775 $FTP/general
 
-chown root:reprobados $FTP/usuarios/reprobados
-chown root:recursadores $FTP/usuarios/recursadores
+sudo chown root:reprobados $FTP/usuarios/reprobados
+sudo chown root:recursadores $FTP/usuarios/recursadores
 
-chmod 770 $FTP/usuarios/reprobados
-chmod 770 $FTP/usuarios/recursadores
+sudo chmod 770 $FTP/usuarios/reprobados
+sudo chmod 770 $FTP/usuarios/recursadores
 
-chmod g+s $FTP/usuarios/reprobados
-chmod g+s $FTP/usuarios/recursadores
+sudo chmod g+s $FTP/usuarios/reprobados
+sudo chmod g+s $FTP/usuarios/recursadores
 
 for dir in $FTP/vhome/*; do
     if [ -d "$dir" ]; then
@@ -28,11 +28,11 @@ for dir in $FTP/vhome/*; do
 
         echo "Arreglando permisos para $user"
 
-        chown root:root $dir
-        chmod 755 $dir
+        sudo chown root:root $dir
+        sudo chmod 755 $dir
 
-        chown -R $user:$user $dir/$user 2>/dev/null
-        chmod 770 $dir/$user 2>/dev/null
+        sudo chown -R $user:$user $dir/$user 2>/dev/null
+        sudo chmod 770 $dir/$user 2>/dev/null
     fi
 done
 
