@@ -36,6 +36,10 @@ continue
 fi
 
 useradd -s /sbin/nologin -g "$grupo" "$usuario"
+
+# agregar al grupo que puede escribir en general
+usermod -aG ftpusers $usuario
+
 echo "$usuario:$pass" | chpasswd
 
 mkdir -p $VHOME/$usuario

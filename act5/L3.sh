@@ -9,8 +9,8 @@ chmod 755 $FTP
 chmod 755 $FTP/vhome
 chmod 755 $FTP/usuarios
 
-chown root:root $FTP/general
-chmod 777 $FTP/general
+chown root:ftpusers $FTP/general
+chmod 775 $FTP/general
 
 chown root:reprobados $FTP/usuarios/reprobados
 chown root:recursadores $FTP/usuarios/recursadores

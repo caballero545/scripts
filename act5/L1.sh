@@ -12,6 +12,7 @@ apt install vsftpd -y
 
 groupadd reprobados 2>/dev/null
 groupadd recursadores 2>/dev/null
+groupadd ftpusers 2>/dev/null
 
 mkdir -p /srv/ftp/general
 mkdir -p /srv/ftp/usuarios/reprobados
@@ -23,7 +24,8 @@ chmod 755 /srv/ftp
 chmod 755 /srv/ftp/vhome
 
 # carpeta publica
-chmod 777 /srv/ftp/general
+chown root:ftpusers /srv/ftp/general
+chmod 775 /srv/ftp/general
 
 # carpetas de grupos
 chown root:reprobados /srv/ftp/usuarios/reprobados
