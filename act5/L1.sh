@@ -21,8 +21,11 @@ mkdir -p /srv/ftp/vhome
 chmod 755 /srv
 chmod 755 /srv/ftp
 chmod 755 /srv/ftp/vhome
+
+# carpeta publica
 chmod 777 /srv/ftp/general
 
+# carpetas de grupos
 chown root:reprobados /srv/ftp/usuarios/reprobados
 chown root:recursadores /srv/ftp/usuarios/recursadores
 

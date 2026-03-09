@@ -4,36 +4,30 @@ FTP="/srv/ftp"
 
 echo "===== ARREGLANDO PERMISOS FTP ====="
 
-# permisos base
 chmod 755 /srv
 chmod 755 $FTP
 chmod 755 $FTP/vhome
 chmod 755 $FTP/usuarios
 
-# carpeta publica abierta para que logeados puedan escribir
 chown root:root $FTP/general
 chmod 777 $FTP/general
 
-# carpetas de grupos
 chown root:reprobados $FTP/usuarios/reprobados
 chown root:recursadores $FTP/usuarios/recursadores
 
 chmod 770 $FTP/usuarios/reprobados
 chmod 770 $FTP/usuarios/recursadores
 
-# setgid para mantener grupo
 chmod g+s $FTP/usuarios/reprobados
 chmod g+s $FTP/usuarios/recursadores
 
-# arreglar permisos de homes ftp
 for dir in $FTP/vhome/*; do
     if [ -d "$dir" ]; then
 
         user=$(basename "$dir")
 
         echo "Arreglando permisos para $user"
-        
-        # OJO: Solo arreglamos la raíz del vhome y su carpeta personal
+
         chown root:root $dir
         chmod 755 $dir
 
@@ -42,7 +36,6 @@ for dir in $FTP/vhome/*; do
     fi
 done
 
-# permitir shell nologin
 if ! grep -q "/sbin/nologin" /etc/shells; then
     echo "/sbin/nologin" >> /etc/shells
 fi

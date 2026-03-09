@@ -1,16 +1,11 @@
 #!/bin/bash
 
-BASE="/srv/ftp/usuarios"
 VHOME="/srv/ftp/vhome"
 
 read -p "Usuario: " usuario
 
-if [ -d "$BASE/reprobados/$usuario" ]; then
-grupo="reprobados"
-elif [ -d "$BASE/recursadores/$usuario" ]; then
-grupo="recursadores"
-else
-echo "No existe"
+if ! id "$usuario" &>/dev/null; then
+echo "Usuario no existe"
 exit
 fi
 
@@ -25,13 +20,8 @@ else
 nuevo="recursadores"
 fi
 
-mv $BASE/$grupo/$usuario $BASE/$nuevo/
-
-rm -rf $VHOME/$usuario/$grupo
-mkdir $VHOME/$usuario/$nuevo
-
-chown -R $usuario:$nuevo $BASE/$nuevo/$usuario
-
 usermod -g $nuevo $usuario
+
+echo "Grupo cambiado a $nuevo"
 
 systemctl restart vsftpd
