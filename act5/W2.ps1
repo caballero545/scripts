@@ -42,7 +42,7 @@ New-Item -ItemType Directory -Path "$VHOME\$usuario\general" -Force
 New-Item -ItemType Directory -Path "$VHOME\$usuario\$grupo" -Force
 New-Item -ItemType Directory -Path "$VHOME\$usuario\$usuario" -Force
 
-icacls "$VHOME\$usuario" /grant "$usuario:(OI)(CI)M"
+icacls "$VHOME\$usuario" /grant "${usuario}:(OI)(CI)M"
 
 Write-Host "Usuario creado."
 
