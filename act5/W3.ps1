@@ -15,10 +15,10 @@ $user=$_.Name
 
 Write-Host "Arreglando permisos para $user"
 
-icacls "$FTP\vhome\$user" /grant "$user:(OI)(CI)M"
+icacls "$FTP\vhome\$user" /grant "${user}:(OI)(CI)M"
 
 }
 
 Restart-Service ftpsvc
 
-Write-Host "Permisos aplicados correctamente."
+Write-Host "Permisos aplicados correctamente"
