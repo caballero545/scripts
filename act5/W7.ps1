@@ -1,5 +1,11 @@
-Write-Host "Configurando FTP anonimo..."
+Import-Module WebAdministration
 
-New-Item -ItemType Directory -Path C:\FTP\general -Force
+Write-Host "Configurando acceso anonimo..."
 
-Write-Host "Acceso anonimo listo."
+Set-ItemProperty IIS:\Sites\FTP `
+-name ftpServer.security.authentication.anonymousAuthentication.enabled `
+-value $true
+
+Restart-Service ftpsvc
+
+Write-Host "Acceso anonimo habilitado."
