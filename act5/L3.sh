@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if [ "$EUID" -ne 0 ]; then
+echo "Ejecuta como root"
+exit
+fi
+
 FTP="/srv/ftp"
 
 echo "===== ARREGLANDO PERMISOS FTP ====="

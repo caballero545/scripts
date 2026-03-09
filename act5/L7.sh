@@ -9,23 +9,20 @@ CARPETA="/srv/ftp/general"
 
 echo "Configurando acceso anonimo..."
 
-# asegurar carpeta
 mkdir -p $CARPETA
 
-# permisos solo lectura
-chmod 755 $CARPETA
-chown nobody:nogroup $CARPETA
+# solo aseguramos lectura para otros
+chmod 775 $CARPETA
 
-# modificar configuracion vsftpd
+# modificar configuracion
 sed -i 's/^anonymous_enable=.*/anonymous_enable=YES/' $CONF
 
-# añadir si no existen
 grep -q "anon_root=" $CONF || echo "anon_root=$CARPETA" >> $CONF
 grep -q "anon_upload_enable=" $CONF || echo "anon_upload_enable=NO" >> $CONF
 grep -q "anon_mkdir_write_enable=" $CONF || echo "anon_mkdir_write_enable=NO" >> $CONF
 grep -q "anon_other_write_enable=" $CONF || echo "anon_other_write_enable=NO" >> $CONF
+grep -q "local_umask=" $CONF || echo "local_umask=002" >> $CONF
 
-# reiniciar servicio
 systemctl restart vsftpd
 
 echo ""

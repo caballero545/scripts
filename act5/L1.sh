@@ -24,8 +24,8 @@ chmod 755 /srv/ftp
 chmod 755 /srv/ftp/vhome
 
 # carpeta publica
-chown root:ftpusers /srv/ftp/general
-chmod 775 /srv/ftp/general
+sudo chown root:ftpusers /srv/ftp/general
+sudo chmod 775 /srv/ftp/general
 
 # carpetas de grupos
 chown root:reprobados /srv/ftp/usuarios/reprobados
@@ -43,6 +43,7 @@ anon_root=/srv/ftp/general
 
 local_enable=YES
 write_enable=YES
+local_umask=002
 
 chroot_local_user=YES
 allow_writeable_chroot=YES
