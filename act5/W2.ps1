@@ -33,13 +33,13 @@ continue
 
 New-LocalUser $usuario -Password $pass
 Add-LocalGroupMember -Group $grupo -Member $usuario
-Add-LocalGroupMember -Group ftpusers -Member $usuario
 
-New-Item -ItemType Directory -Path "$ROOT\$usuario" -Force
+New-Item "$ROOT\$usuario" -ItemType Directory -Force
 
-icacls "$ROOT\$usuario" /grant "${usuario}:(OI)(CI)M"
-icacls "$ROOT\general" /grant "${usuario}:(OI)(CI)M"
-icacls "$ROOT\$grupo" /grant "${usuario}:(OI)(CI)M"
+icacls $ROOT /grant "$usuario:(RX)"
+icacls "$ROOT\$usuario" /grant "$usuario:(OI)(CI)M"
+icacls "$ROOT\general" /grant "$usuario:(M)"
+icacls "$ROOT\$grupo" /grant "$usuario:(M)"
 
 Write-Host "Usuario creado correctamente."
 

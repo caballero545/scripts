@@ -5,7 +5,7 @@ Clear-Host
 Write-Host "================================="
 Write-Host "       ADMINISTRADOR FTP"
 Write-Host "================================="
-Write-Host "1) Instalar / reparar FTP"
+Write-Host "1)s Instalar / reparar FTP"
 Write-Host "2) Crear usuarios FTP"
 Write-Host "3) Configurar permisos FTP"
 Write-Host "4) Cambiar grupo de usuario"

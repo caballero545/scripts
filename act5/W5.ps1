@@ -1,21 +1,15 @@
-$ROOT="C:\FTP"
+Get-LocalUser | Where-Object {
+Test-Path "C:\FTP\$($_.Name)"
+} | ForEach-Object {
 
-Write-Host "================================="
-Write-Host "    USUARIOS FTP REGISTRADOS"
-Write-Host "================================="
+$user=$_.Name
 
-Get-LocalUser | ForEach-Object {
-
-$usuario=$_.Name
-
-if(Test-Path "$ROOT\$usuario"){
-
-$grupo=(Get-LocalGroup | Where-Object {
-(Get-LocalGroupMember $_.Name -ErrorAction SilentlyContinue).Name -match $usuario
-}).Name
-
-Write-Host "$usuario  -  $grupo"
-
+if(Get-LocalGroupMember reprobados -ErrorAction SilentlyContinue | Where {$_.Name -match $user}){
+$grupo="reprobados"
+}elseif(Get-LocalGroupMember recursadores | Where {$_.Name -match $user}){
+$grupo="recursadores"
 }
+
+Write-Host "$user - $grupo"
 
 }

@@ -11,8 +11,7 @@ Write-Host "Usuario no existe"
 exit
 }
 
-Remove-LocalUser $usuario
-
-Remove-Item "$ROOT\$usuario" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-LocalUser $usuario -ErrorAction SilentlyContinue
+Remove-Item "C:\FTP\$usuario" -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host "Usuario eliminado correctamente."

@@ -1,26 +1,19 @@
-$usuario = Read-Host "Usuario"
-
-if (!(Get-LocalUser -Name $usuario -ErrorAction SilentlyContinue)) {
-Write-Host "Usuario no existe"
-exit
-}
+$usuario=Read-Host "Usuario"
 
 Write-Host "1) reprobados"
 Write-Host "2) recursadores"
 
-$op = Read-Host
+$op=Read-Host
 
-if ($op -eq "1") {
+Remove-LocalGroupMember reprobados -Member $usuario -ErrorAction SilentlyContinue
+Remove-LocalGroupMember recursadores -Member $usuario -ErrorAction SilentlyContinue
+
+if($op -eq "1"){
+Add-LocalGroupMember reprobados -Member $usuario
 $grupo="reprobados"
-Remove-LocalGroupMember -Group recursadores -Member $usuario -ErrorAction SilentlyContinue
-}
-elseif ($op -eq "2") {
+}else{
+Add-LocalGroupMember recursadores -Member $usuario
 $grupo="recursadores"
-Remove-LocalGroupMember -Group reprobados -Member $usuario -ErrorAction SilentlyContinue
 }
 
-Add-LocalGroupMember -Group $grupo -Member $usuario
-
-Write-Host "Grupo cambiado a $grupo"
-
-Restart-Service ftpsvc
+Write-Host "Usuario ahora pertenece a $grupo"

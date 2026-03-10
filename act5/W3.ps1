@@ -1,24 +1,11 @@
 $FTP="C:\FTP"
 
-Write-Host "===== ARREGLANDO PERMISOS FTP ====="
+Write-Host "Configurando permisos seguros..."
 
-icacls $FTP /grant "Users:(RX)"
+icacls $FTP /inheritance:r
 
-icacls "$FTP\general" /grant "ftpusers:(M)"
+icacls $FTP /grant "Administrators:(OI)(CI)F"
 
-icacls "$FTP\reprobados" /grant "reprobados:(M)"
-icacls "$FTP\recursadores" /grant "recursadores:(M)"
-
-Get-ChildItem "$FTP" -Directory | Where-Object { $_.Name -notmatch "general|reprobados|recursadores" } | ForEach-Object {
-
-$user=$_.Name
-
-Write-Host "Permisos para $user"
-
-icacls "$FTP\$user" /grant "${user}:(OI)(CI)M"
-
-}
+icacls "$FTP\general" /grant "IUSR:(RX)"
 
 Restart-Service ftpsvc
-
-Write-Host "Permisos aplicados correctamente"
