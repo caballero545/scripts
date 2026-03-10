@@ -1,11 +1,9 @@
 $FTP="C:\FTP"
 
-Write-Host "Configurando permisos seguros..."
-
 icacls $FTP /inheritance:r
 
 icacls $FTP /grant "Administrators:(OI)(CI)F"
 
-icacls "$FTP\general" /grant "IUSR:(RX)"
-
-Restart-Service ftpsvc
+icacls "C:\FTP\general" /grant "ftpusers:(OI)(CI)M"
+icacls "C:\FTP\usuarios\reprobados" /grant "reprobados:(OI)(CI)M"
+icacls "C:\FTP\usuarios\recursadores" /grant "recursadores:(OI)(CI)M"

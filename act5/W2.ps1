@@ -1,48 +1,47 @@
-$ROOT="C:\FTP"
+$BASE="C:\FTP\usuarios"
+$VHOME="C:\FTP\vhome"
+$GENERAL="C:\FTP\general"
 
-Write-Host "CREACION DE USUARIOS FTP"
+$n=Read-Host "Cuantos usuarios"
 
-$n = Read-Host "Cuantos usuarios deseas crear"
+for($i=1;$i -le $n;$i++){
 
-for ($i=1; $i -le $n; $i++) {
-
-$usuario = Read-Host "Nombre de usuario"
+$usuario=Read-Host "Usuario"
 
 if (Get-LocalUser -Name $usuario -ErrorAction SilentlyContinue) {
 Write-Host "Usuario ya existe"
 continue
 }
 
-$pass = Read-Host "Contraseña" -AsSecureString
+$pass=Read-Host "Password" -AsSecureString
 
 Write-Host "1) reprobados"
 Write-Host "2) recursadores"
 
-$g = Read-Host "Grupo"
+$g=Read-Host
 
-if ($g -eq "1") {
-$grupo="reprobados"
-}
-elseif ($g -eq "2") {
-$grupo="recursadores"
-}
-else {
-Write-Host "Grupo invalido"
-continue
-}
+if($g -eq "1"){ $grupo="reprobados" }
+elseif($g -eq "2"){ $grupo="recursadores" }
 
 New-LocalUser $usuario -Password $pass
-Add-LocalGroupMember -Group $grupo -Member $usuario
+Add-LocalGroupMember $grupo -Member $usuario
+Add-LocalGroupMember ftpusers -Member $usuario
 
-New-Item "$ROOT\$usuario" -ItemType Directory -Force
+# estructura
+New-Item "$VHOME\$usuario" -ItemType Directory -Force
+New-Item "$VHOME\$usuario\general" -ItemType Directory -Force
+New-Item "$VHOME\$usuario\$grupo" -ItemType Directory -Force
+New-Item "$VHOME\$usuario\$usuario" -ItemType Directory -Force
 
-icacls $ROOT /grant "$usuario:(RX)"
-icacls "$ROOT\$usuario" /grant "$usuario:(OI)(CI)M"
-icacls "$ROOT\general" /grant "$usuario:(M)"
-icacls "$ROOT\$grupo" /grant "$usuario:(M)"
+# junctions (como bind mount)
+cmd /c mklink /J "$VHOME\$usuario\general" "$GENERAL"
+cmd /c mklink /J "$VHOME\$usuario\$grupo" "$BASE\$grupo"
 
-Write-Host "Usuario creado correctamente."
+# permisos
+icacls "$VHOME\$usuario" /grant "$usuario:(RX)"
+icacls "$VHOME\$usuario\$usuario" /grant "$usuario:(OI)(CI)M"
+
+icacls "$GENERAL" /grant "$usuario:(M)"
+icacls "$BASE\$grupo" /grant "$usuario:(M)"
 
 }
-
-Restart-Service ftpsvc

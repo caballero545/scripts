@@ -12,7 +12,8 @@ Write-Host "4) Cambiar grupo de usuario"
 Write-Host "5) Ver usuarios FTP"
 Write-Host "6) Eliminar usuario FTP"
 Write-Host "7) Configurar FTP anonimo"
-Write-Host "8) Reiniciar FTP"
+Write-Host "8) Estado completo del FTP"
+Write-Host "9) Reiniciar FTP"
 Write-Host "0) Salir"
 Write-Host "================================="
 
@@ -56,6 +57,12 @@ switch ($op) {
 }
 
 "8" {
+    .\W8.ps1
+    pause
+}
+
+
+"9" {
     .\Wr.ps1
     pause
 }
