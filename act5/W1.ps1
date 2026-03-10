@@ -12,9 +12,8 @@ New-LocalGroup ftpusers -ErrorAction SilentlyContinue
 
 New-Item -ItemType Directory -Path C:\FTP -Force
 New-Item -ItemType Directory -Path C:\FTP\general -Force
-New-Item -ItemType Directory -Path C:\FTP\usuarios\reprobados -Force
-New-Item -ItemType Directory -Path C:\FTP\usuarios\recursadores -Force
-New-Item -ItemType Directory -Path C:\FTP\vhome -Force
+New-Item -ItemType Directory -Path C:\FTP\reprobados -Force
+New-Item -ItemType Directory -Path C:\FTP\recursadores -Force
 
 if (!(Test-Path "IIS:\Sites\FTP")) {
 
@@ -28,6 +27,9 @@ New-WebFtpSite `
 
 Set-ItemProperty IIS:\Sites\FTP -Name ftpServer.security.authentication.basicAuthentication.enabled -Value $true
 Set-ItemProperty IIS:\Sites\FTP -Name ftpServer.security.authentication.anonymousAuthentication.enabled -Value $true
+
+Set-ItemProperty "IIS:\Sites\FTP" -Name ftpServer.security.ssl.controlChannelPolicy -Value 0
+Set-ItemProperty "IIS:\Sites\FTP" -Name ftpServer.security.ssl.dataChannelPolicy -Value 0
 
 Restart-Service ftpsvc
 

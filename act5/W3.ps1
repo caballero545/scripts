@@ -6,16 +6,16 @@ icacls $FTP /grant "Users:(RX)"
 
 icacls "$FTP\general" /grant "ftpusers:(M)"
 
-icacls "$FTP\usuarios\reprobados" /grant "reprobados:(M)"
-icacls "$FTP\usuarios\recursadores" /grant "recursadores:(M)"
+icacls "$FTP\reprobados" /grant "reprobados:(M)"
+icacls "$FTP\recursadores" /grant "recursadores:(M)"
 
-Get-ChildItem "$FTP\vhome" | ForEach-Object {
+Get-ChildItem "$FTP" -Directory | Where-Object { $_.Name -notmatch "general|reprobados|recursadores" } | ForEach-Object {
 
 $user=$_.Name
 
-Write-Host "Arreglando permisos para $user"
+Write-Host "Permisos para $user"
 
-icacls "$FTP\vhome\$user" /grant "${user}:(OI)(CI)M"
+icacls "$FTP\$user" /grant "${user}:(OI)(CI)M"
 
 }
 

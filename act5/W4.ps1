@@ -12,9 +12,11 @@ $op = Read-Host
 
 if ($op -eq "1") {
 $grupo="reprobados"
+Remove-LocalGroupMember -Group recursadores -Member $usuario -ErrorAction SilentlyContinue
 }
-else {
+elseif ($op -eq "2") {
 $grupo="recursadores"
+Remove-LocalGroupMember -Group reprobados -Member $usuario -ErrorAction SilentlyContinue
 }
 
 Add-LocalGroupMember -Group $grupo -Member $usuario

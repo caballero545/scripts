@@ -1,6 +1,4 @@
-$BASE="C:\FTP\usuarios"
-$VHOME="C:\FTP\vhome"
-$GENERAL="C:\FTP\general"
+$ROOT="C:\FTP"
 
 Write-Host "CREACION DE USUARIOS FTP"
 
@@ -37,14 +35,13 @@ New-LocalUser $usuario -Password $pass
 Add-LocalGroupMember -Group $grupo -Member $usuario
 Add-LocalGroupMember -Group ftpusers -Member $usuario
 
-New-Item -ItemType Directory -Path "$VHOME\$usuario" -Force
-New-Item -ItemType Directory -Path "$VHOME\$usuario\general" -Force
-New-Item -ItemType Directory -Path "$VHOME\$usuario\$grupo" -Force
-New-Item -ItemType Directory -Path "$VHOME\$usuario\$usuario" -Force
+New-Item -ItemType Directory -Path "$ROOT\$usuario" -Force
 
-icacls "$VHOME\$usuario" /grant "${usuario}:(OI)(CI)M"
+icacls "$ROOT\$usuario" /grant "${usuario}:(OI)(CI)M"
+icacls "$ROOT\general" /grant "${usuario}:(OI)(CI)M"
+icacls "$ROOT\$grupo" /grant "${usuario}:(OI)(CI)M"
 
-Write-Host "Usuario creado."
+Write-Host "Usuario creado correctamente."
 
 }
 
