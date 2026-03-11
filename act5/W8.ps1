@@ -58,7 +58,7 @@ Get-ChildItem $VHOME
 Write-Host ""
 Write-Host "----- Junctions dentro de vhome -----"
 
-Get-ChildItem $VHOME -Recurse | Where-Object {$_.LinkType}
+Get-ChildItem $VHOME -Recurse -Depth 1 -ErrorAction SilentlyContinue | Where-Object {$_.LinkType}
 
 Write-Host ""
 Write-Host "----- Permisos NTFS de GENERAL -----"
@@ -79,14 +79,12 @@ Write-Host ""
 Write-Host "----- Permisos de cada usuario -----"
 
 Get-ChildItem $VHOME -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-
-$user=$_.Name
-
-Write-Host ""
-Write-Host "Usuario:" $user
-
-icacls "$VHOME\$user"
-
+    $user = $_.Name
+    Write-Host ""
+    Write-Host ">>> Analizando permisos para: $user" -ForegroundColor Yellow
+    
+    # Si el admin no tiene acceso, esto fallará, pero no detendrá el script
+    icacls "$VHOME\$user" 2>$null
 }
 
 Write-Host ""
