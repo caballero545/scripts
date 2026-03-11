@@ -5,5 +5,6 @@ Set-ItemProperty IIS:\Sites\FTP `
 -value $true
 
 icacls "C:\FTP\general" /grant "IUSR:(RX)"
+icacls "C:\FTP" /grant "IUSR:(RX)"
 
 Restart-Service ftpsvc

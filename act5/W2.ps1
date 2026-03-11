@@ -1,6 +1,9 @@
 $BASE="C:\FTP\usuarios"
-$VHOME="C:\FTP\vhome"
+$VHOME="C:\FTP\vhome\LocalUser"
 $GENERAL="C:\FTP\general"
+
+# asegurar estructura que IIS necesita
+New-Item -ItemType Directory -Path "C:\FTP\vhome\LocalUser" -Force | Out-Null
 
 $n = Read-Host "Cuantos usuarios"
 
@@ -26,38 +29,32 @@ for ($i=1; $i -le $n; $i++) {
         continue 
     }
 
-    # Crear usuario y grupos
+    # crear usuario
     New-LocalUser $usuario -Password $pass | Out-Null
     Add-LocalGroupMember -Group $grupo -Member $usuario
     Add-LocalGroupMember -Group ftpusers -Member $usuario
 
-    # --- ESTRUCTURA ---
-    # Solo creamos la raíz del usuario y su carpeta privada real
+    # ---------- ESTRUCTURA ----------
     New-Item "$VHOME\$usuario" -ItemType Directory -Force | Out-Null
     New-Item "$VHOME\$usuario\$usuario" -ItemType Directory -Force | Out-Null
 
-    # --- JUNCTIONS (Como bind mounts) ---
-    # NOTA: mklink requiere que la carpeta de destino NO exista. 
-    # Si por error ya existen, las borramos para que el link funcione.
+    # eliminar si existen
     if (Test-Path "$VHOME\$usuario\general") { Remove-Item "$VHOME\$usuario\general" -Force }
     if (Test-Path "$VHOME\$usuario\$grupo") { Remove-Item "$VHOME\$usuario\$grupo" -Force }
 
+    # junctions
     cmd /c mklink /J "$VHOME\$usuario\general" "$GENERAL"
     cmd /c mklink /J "$VHOME\$usuario\$grupo" "$BASE\$grupo"
 
-    # --- PERMISOS (El fix de las llaves ${}) ---
-    # Root del usuario (Solo lectura/ejecución para entrar)
+    # ---------- PERMISOS ----------
     icacls "$VHOME\$usuario" /grant "${usuario}:(RX)"
-    
-    # Carpeta privada (Control total)
     icacls "$VHOME\$usuario\$usuario" /grant "${usuario}:(OI)(CI)M"
 
-    # Permisos en las carpetas compartidas reales
     icacls "$GENERAL" /grant "${usuario}:(M)"
     icacls "$BASE\$grupo" /grant "${usuario}:(M)"
 
-    Write-Host "Usuario $usuario creado y configurado correctamente." -ForegroundColor Green
+    Write-Host "Usuario $usuario creado correctamente." -ForegroundColor Green
 }
 
 Restart-Service ftpsvc
-Write-Host "Servicio FTP reiniciado." -ForegroundColor Cyan
+Write-Host "FTP reiniciado."

@@ -1,4 +1,4 @@
-$VHOME="C:\FTP\vhome"
+$VHOME="C:\FTP\vhome\LocalUser"
 
 Write-Host "================================="
 Write-Host "     USUARIOS FTP REGISTRADOS"

@@ -14,7 +14,9 @@ New-Item C:\FTP\general -ItemType Directory -Force
 New-Item C:\FTP\usuarios -ItemType Directory -Force
 New-Item C:\FTP\usuarios\reprobados -ItemType Directory -Force
 New-Item C:\FTP\usuarios\recursadores -ItemType Directory -Force
+
 New-Item C:\FTP\vhome -ItemType Directory -Force
+New-Item C:\FTP\vhome\LocalUser -ItemType Directory -Force   # NECESARIO PARA IIS
 
 if(!(Test-Path "IIS:\Sites\FTP")){
 New-WebFtpSite -Name "FTP" -Port 21 -PhysicalPath "C:\FTP"
