@@ -1,23 +1,23 @@
-$VHOME="C:\FTP\vhome\LocalUser"
-
 Write-Host "================================="
 Write-Host "     USUARIOS FTP REGISTRADOS"
 Write-Host "================================="
 
-Get-ChildItem $VHOME -Directory | ForEach-Object {
+$users = Get-LocalGroupMember ftpusers
 
-$user=$_.Name
+foreach ($u in $users){
+
+$nombre=$u.Name.Split("\")[-1]
 
 $grupo="sin grupo"
 
-if(Get-LocalGroupMember reprobados -ErrorAction SilentlyContinue | Where {$_.Name -match $user}){
+if(Get-LocalGroupMember reprobados -ErrorAction SilentlyContinue | Where {$_.Name -match $nombre}){
 $grupo="reprobados"
 }
 
-elseif(Get-LocalGroupMember recursadores -ErrorAction SilentlyContinue | Where {$_.Name -match $user}){
+elseif(Get-LocalGroupMember recursadores -ErrorAction SilentlyContinue | Where {$_.Name -match $nombre}){
 $grupo="recursadores"
 }
 
-Write-Host "$user  -  $grupo"
+Write-Host "$nombre - $grupo"
 
 }
