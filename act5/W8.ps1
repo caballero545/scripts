@@ -5,7 +5,7 @@ Write-Host "================================="
 
 $FTP="C:\FTP"
 $BASE="C:\FTP\usuarios"
-$VHOME="C:\FTP\vhome"
+$VHOME="C:\FTP\vhome\LocalUser"
 
 Write-Host ""
 Write-Host "----- Estado del servicio FTP -----"
@@ -78,7 +78,7 @@ icacls "$BASE\recursadores"
 Write-Host ""
 Write-Host "----- Permisos de cada usuario -----"
 
-Get-ChildItem $VHOME | ForEach-Object {
+Get-ChildItem $VHOME -Directory -ErrorAction SilentlyContinue | ForEach-Object {
 
 $user=$_.Name
 
