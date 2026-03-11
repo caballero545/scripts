@@ -1,8 +1,10 @@
-$ROOT="C:\FTP"
+$VHOME="C:\FTP\vhome\LocalUser"
 
 Write-Host "Usuarios existentes:"
 
-Get-ChildItem $ROOT -Directory | Where-Object { $_.Name -notmatch "general|reprobados|recursadores" } | ForEach-Object { Write-Host $_.Name }
+Get-ChildItem $VHOME -Directory | ForEach-Object {
+Write-Host $_.Name
+}
 
 $usuario = Read-Host "Usuario a eliminar"
 
@@ -11,7 +13,14 @@ Write-Host "Usuario no existe"
 exit
 }
 
-Remove-LocalUser $usuario -ErrorAction SilentlyContinue
-Remove-Item "C:\FTP\$usuario" -Recurse -Force -ErrorAction SilentlyContinue
+# eliminar usuario del sistema
+Remove-LocalUser $usuario
+
+# eliminar carpeta FTP
+if(Test-Path "$VHOME\$usuario"){
+Remove-Item "$VHOME\$usuario" -Recurse -Force
+}
 
 Write-Host "Usuario eliminado correctamente."
+
+Restart-Service ftpsvc
