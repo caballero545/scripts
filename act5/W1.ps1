@@ -43,7 +43,7 @@ if(!(Test-Path "IIS:\Sites\FTP")){
 New-WebFtpSite -Name "FTP" -Port 21 -PhysicalPath "C:\FTP"
 }
 
-Write-Host "Configurando autenticacion..."
+Write-Host "Configurando autenticacion...."
 
 Set-ItemProperty IIS:\Sites\FTP `
 -name ftpServer.security.authentication.basicAuthentication.enabled `
