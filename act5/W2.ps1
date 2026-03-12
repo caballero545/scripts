@@ -32,15 +32,11 @@ New-LocalUser $usuario -Password $pass
 Add-LocalGroupMember ftpusers -Member $usuario
 Add-LocalGroupMember $grupo -Member $usuario
 
-Write-Host "Creando home FTP..."
-
 New-Item "$VHOME\$usuario" -ItemType Directory -Force
 New-Item "$VHOME\$usuario\$usuario" -ItemType Directory -Force
 
 cmd /c mklink /J "$VHOME\$usuario\general" "$GENERAL"
 cmd /c mklink /J "$VHOME\$usuario\$grupo" "$BASE\$grupo"
-
-Write-Host "Asignando permisos..."
 
 icacls "$VHOME\$usuario" /grant "${usuario}:(OI)(CI)M"
 icacls "$VHOME\$usuario\$usuario" /grant "${usuario}:(OI)(CI)M"
@@ -48,7 +44,7 @@ icacls "$VHOME\$usuario\$usuario" /grant "${usuario}:(OI)(CI)M"
 icacls "$GENERAL" /grant "${usuario}:(M)"
 icacls "$BASE\$grupo" /grant "${usuario}:(M)"
 
-Write-Host "Usuario creado correctamente"
+Write-Host "Usuario creado."
 }
 
 Restart-Service ftpsvc

@@ -25,17 +25,15 @@ New-Item C:\FTP\usuarios\recursadores -ItemType Directory -Force
 New-Item C:\FTP\vhome -ItemType Directory -Force
 New-Item C:\FTP\vhome\LocalUser -ItemType Directory -Force
 
-Write-Host "Configurando permisos base..."
+Write-Host "Permisos base..."
 
 icacls C:\FTP /inheritance:r
-
 icacls C:\FTP /grant "Administrators:(OI)(CI)F"
 icacls C:\FTP /grant "SYSTEM:(OI)(CI)F"
 icacls C:\FTP /grant "IIS_IUSRS:(OI)(CI)RX"
 icacls C:\FTP /grant "Users:(RX)"
 
 icacls C:\FTP\general /grant "ftpusers:(OI)(CI)M"
-
 icacls C:\FTP\usuarios\reprobados /grant "reprobados:(OI)(CI)M"
 icacls C:\FTP\usuarios\recursadores /grant "recursadores:(OI)(CI)M"
 
@@ -45,29 +43,38 @@ if(!(Test-Path "IIS:\Sites\FTP")){
 New-WebFtpSite -Name "FTP" -Port 21 -PhysicalPath "C:\FTP"
 }
 
-Write-Host "Configurando autenticación..."
+Write-Host "Configurando autenticacion..."
 
-Set-ItemProperty IIS:\Sites\FTP -Name ftpServer.security.authentication.basicAuthentication.enabled -Value $true
-Set-ItemProperty IIS:\Sites\FTP -Name ftpServer.security.authentication.anonymousAuthentication.enabled -Value $true
+Set-ItemProperty IIS:\Sites\FTP `
+-name ftpServer.security.authentication.basicAuthentication.enabled `
+-value $true
 
-Write-Host "Configurando aislamiento de usuarios..."
+Set-ItemProperty IIS:\Sites\FTP `
+-name ftpServer.security.authentication.anonymousAuthentication.enabled `
+-value $true
 
-Set-ItemProperty IIS:\Sites\FTP -Name ftpServer.userIsolation.mode -Value 3
+Write-Host "Configurando aislamiento..."
 
-Write-Host "Configurando reglas de autorización..."
+Set-ItemProperty IIS:\Sites\FTP `
+-name ftpServer.userIsolation.mode `
+-value 3
 
-Clear-WebConfiguration "/system.ftpServer/security/authorization" -PSPath IIS:\
+Write-Host "Configurando reglas FTP..."
+
+Clear-WebConfiguration `
+-filter system.ftpServer/security/authorization `
+-PSPath IIS:\Sites\FTP
 
 Add-WebConfiguration `
-"/system.ftpServer/security/authorization" `
--value @{accessType="Allow";users="*";permissions="Read"} `
--PSPath IIS:\
+-filter system.ftpServer/security/authorization `
+-PSPath IIS:\Sites\FTP `
+-value @{accessType="Allow";users="*";permissions="Read"}
 
 Add-WebConfiguration `
-"/system.ftpServer/security/authorization" `
--value @{accessType="Allow";roles="ftpusers";permissions="Read,Write"} `
--PSPath IIS:\
+-filter system.ftpServer/security/authorization `
+-PSPath IIS:\Sites\FTP `
+-value @{accessType="Allow";roles="ftpusers";permissions="Read,Write"}
 
 Restart-Service ftpsvc
 
-Write-Host "FTP instalado y configurado correctamente."
+Write-Host "FTP instalado correctamente."

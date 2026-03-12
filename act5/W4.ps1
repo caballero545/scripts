@@ -1,12 +1,12 @@
 $BASE="C:\FTP\usuarios"
 $VHOME="C:\FTP\vhome\LocalUser"
 
-$usuario=Read-Host "Usuario"
+$usuario = Read-Host "Usuario"
 
 Write-Host "1 reprobados"
 Write-Host "2 recursadores"
 
-$op=Read-Host "Grupo"
+$op = Read-Host "Grupo"
 
 Remove-LocalGroupMember reprobados -Member $usuario -ErrorAction SilentlyContinue
 Remove-LocalGroupMember recursadores -Member $usuario -ErrorAction SilentlyContinue
