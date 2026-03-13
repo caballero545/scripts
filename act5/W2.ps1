@@ -27,7 +27,12 @@ Write-Host "Grupo invalido"
 continue
 }
 
-New-LocalUser $usuario -Password $pass
+New-LocalUser $usuario -Password $pass -ErrorAction SilentlyContinue
+
+if(!(Get-LocalUser $usuario -ErrorAction SilentlyContinue)){
+Write-Host "No se pudo crear el usuario. Verifique la contraseña." -ForegroundColor Red
+continue
+}
 
 Add-LocalGroupMember ftpusers -Member $usuario
 Add-LocalGroupMember $grupo -Member $usuario
