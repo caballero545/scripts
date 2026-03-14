@@ -25,21 +25,20 @@ icacls "C:\FTP\vhome\LocalUser" /grant "Users:(RX)"
 
 Import-Module WebAdministration
 
-Set-WebConfigurationProperty `
--pspath "MACHINE/WEBROOT/APPHOST" `
--filter "system.ftpServer/security/ssl" `
--name "controlChannelPolicy" `
--value "SslAllow"
+# Crear la sección SSL en el sitio FTP
+Add-WebConfiguration `
+-PSPath "IIS:\" `
+-Location "FTP" `
+-Filter "system.ftpServer/security" `
+-Value @{ssl=@{controlChannelPolicy="SslAllow";dataChannelPolicy="SslAllow"}}
 
-Set-WebConfigurationProperty `
--pspath "MACHINE/WEBROOT/APPHOST" `
--filter "system.ftpServer/security/ssl" `
--name "dataChannelPolicy" `
--value "SslAllow"
-
+# Reiniciar el servicio FTP
 Restart-Service ftpsvc
 
+# Verificar configuración
 Get-WebConfiguration `
--filter "system.ftpServer/security/ssl"
+-PSPath "IIS:\" `
+-Location "FTP" `
+-Filter "system.ftpServer/security/ssl"
 
 Write-Host "Permisos aplicados correctamente."
