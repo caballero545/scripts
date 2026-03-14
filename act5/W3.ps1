@@ -1,51 +1,65 @@
-$FTP="C:\FTP"
+Import-Module WebAdministration
 
-Write-Host "--- 1. Limpiando archivos corruptos ---" -ForegroundColor Cyan
-# ESTO SOLUCIONA EL ERROR DE DUPLICADOS: Borramos el web.config intruso
-if (Test-Path "$FTP\web.config") {
-    Remove-Item "$FTP\web.config" -Force
-    Write-Host "Archivo web.config corrupto eliminado." -ForegroundColor Yellow
+$FTP="C:\FTP"
+$GENERAL="$FTP\general"
+$REPRO="$FTP\reprobados"
+$RECUR="$FTP\recursadores"
+$LOCALUSER="$FTP\LocalUser"
+
+Write-Host "===================================="
+Write-Host "REPARACION COMPLETA DEL SERVIDOR FTP"
+Write-Host "===================================="
+
+# verificar estructura
+$rutas=@($FTP,$GENERAL,$REPRO,$RECUR,$LOCALUSER)
+
+foreach($r in $rutas){
+
+if(!(Test-Path $r)){
+Write-Host "Creando carpeta faltante: $r"
+New-Item $r -ItemType Directory | Out-Null
 }
 
-Write-Host "--- 2. Aplicando permisos NTFS base ---" -ForegroundColor Cyan
+}
+
+Write-Host "Aplicando permisos base..."
+
 icacls $FTP /inheritance:r
+
 icacls $FTP /grant "Administrators:(OI)(CI)F"
 icacls $FTP /grant "SYSTEM:(OI)(CI)F"
 icacls $FTP /grant "IIS_IUSRS:(OI)(CI)RX"
 icacls $FTP /grant "Users:(RX)"
 
-Write-Host "--- 3. Permisos de carpetas ---" -ForegroundColor Cyan
-icacls "C:\FTP\general" /grant "ftpusers:(OI)(CI)M"
-icacls "C:\FTP\usuarios\reprobados" /grant "reprobados:(OI)(CI)M"
-icacls "C:\FTP\usuarios\recursadores" /grant "recursadores:(OI)(CI)M"
+Write-Host "Permisos carpetas publicas"
 
-Write-Host "--- 4. Permisos vhome ---" -ForegroundColor Cyan
-icacls "C:\FTP\vhome" /grant "Users:(RX)"
-icacls "C:\FTP\vhome\LocalUser" /grant "Users:(RX)"
-icacls "C:\FTP\vhome\LocalUser" /grant "ftpusers:(OI)(CI)RX"
-icacls "C:\FTP\vhome" /grant "ftpusers:(RX)"
+icacls $GENERAL /grant "ftpusers:(OI)(CI)M"
+icacls $REPRO /grant "reprobados:(OI)(CI)M"
+icacls $RECUR /grant "recursadores:(OI)(CI)M"
 
-Import-Module WebAdministration
+Write-Host "Permisos estructura usuarios"
 
-Write-Host "--- 5. Configurando Reglas de IIS y SSL ---" -ForegroundColor Cyan
+icacls $LOCALUSER /grant "Users:(RX)"
+icacls $LOCALUSER /grant "ftpusers:(OI)(CI)RX"
 
-# Asegurarnos de que la Autenticación Básica esté ACTIVA
+Write-Host "Reconfigurando IIS FTP"
+
 Set-ItemProperty "IIS:\Sites\FTP" -Name ftpServer.security.authentication.basicAuthentication.enabled -Value $true
+Set-ItemProperty "IIS:\Sites\FTP" -Name ftpServer.security.authentication.anonymousAuthentication.enabled -Value $true
 
-# Limpiar autorizaciones usando la ruta correcta (IIS:\Sites\FTP)
-Clear-WebConfiguration -Filter "system.ftpServer/security/authorization" -PSPath "IIS:\Sites\FTP" -ErrorAction SilentlyContinue
-
-# Agregar reglas correctamente (Si ya existen, no tira error)
-Add-WebConfiguration -Filter "system.ftpServer/security/authorization" -PSPath "IIS:\Sites\FTP" -Value @{accessType="Allow";users="*";permissions="Read"} -ErrorAction SilentlyContinue
-Add-WebConfiguration -Filter "system.ftpServer/security/authorization" -PSPath "IIS:\Sites\FTP" -Value @{accessType="Allow";roles="ftpusers";permissions="Read,Write"} -ErrorAction SilentlyContinue
-
-# Configurar SSL correctamente usando Set-ItemProperty
 Set-ItemProperty "IIS:\Sites\FTP" -Name ftpServer.security.ssl.controlChannelPolicy -Value "SslAllow"
 Set-ItemProperty "IIS:\Sites\FTP" -Name ftpServer.security.ssl.dataChannelPolicy -Value "SslAllow"
 
-# Reiniciar el servicio FTP
+Clear-WebConfiguration -Filter system.ftpServer/security/authorization -PSPath "IIS:\Sites\FTP" -ErrorAction SilentlyContinue
+
+Add-WebConfiguration -Filter system.ftpServer/security/authorization -PSPath "IIS:\Sites\FTP" -Value @{accessType="Allow";users="anonymous";permissions="Read"}
+
+Add-WebConfiguration -Filter system.ftpServer/security/authorization -PSPath "IIS:\Sites\FTP" -Value @{accessType="Allow";roles="ftpusers";permissions="Read,Write"}
+
+Write-Host "Reiniciando servicio FTP"
+
 Restart-Service ftpsvc
 
-Write-Host "==========================================" -ForegroundColor Green
-Write-Host "  PERMISOS Y REGLAS APLICADOS CORRECTAMENTE" -ForegroundColor Green
-Write-Host "==========================================" -ForegroundColor Green
+Write-Host "===================================="
+Write-Host "PERMISOS REPARADOS CORRECTAMENTE"
+Write-Host "===================================="
