@@ -46,10 +46,5 @@ cmd /c mklink /J "$VHOME\$usuario\$grupo" "$BASE\$grupo"
 icacls "$VHOME\$usuario" /grant "${usuario}:(OI)(CI)M"
 icacls "$VHOME\$usuario\$usuario" /grant "${usuario}:(OI)(CI)M"
 
-icacls "$GENERAL" /grant "${usuario}:(M)"
-icacls "$BASE\$grupo" /grant "${usuario}:(M)"
-
 Write-Host "Usuario creado."
-}
-
 Restart-Service ftpsvc

@@ -11,8 +11,8 @@ $op = Read-Host "Grupo"
 Remove-LocalGroupMember reprobados -Member $usuario -ErrorAction SilentlyContinue
 Remove-LocalGroupMember recursadores -Member $usuario -ErrorAction SilentlyContinue
 
-Remove-Item "$VHOME\$usuario\reprobados" -Force -Recurse -ErrorAction SilentlyContinue
-Remove-Item "$VHOME\$usuario\recursadores" -Force -Recurse -ErrorAction SilentlyContinue
+cmd /c rmdir "$VHOME\$usuario\reprobados" 2> $null
+cmd /c rmdir "$VHOME\$usuario\recursadores" 2> $null
 
 if($op -eq "1"){
 

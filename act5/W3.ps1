@@ -29,17 +29,17 @@ Import-Module WebAdministration
 
 Write-Host "--- 5. Configurando Reglas de IIS y SSL ---" -ForegroundColor Cyan
 
-# Asegurarnos de que la Autenticación Básica esté ACTIVA (Evita el Error 530)
+# Asegurarnos de que la Autenticación Básica esté ACTIVA
 Set-ItemProperty "IIS:\Sites\FTP" -Name ftpServer.security.authentication.basicAuthentication.enabled -Value $true
 
 # Limpiar autorizaciones usando la ruta correcta (IIS:\Sites\FTP)
-Clear-WebConfiguration -Filter "system.ftpServer/security/authorization" -PSPath "IIS:\Sites\FTP"
+Clear-WebConfiguration -Filter "system.ftpServer/security/authorization" -PSPath "IIS:\Sites\FTP" -ErrorAction SilentlyContinue
 
-# Agregar reglas correctamente sin usar -Location
-Add-WebConfiguration -Filter "system.ftpServer/security/authorization" -PSPath "IIS:\Sites\FTP" -Value @{accessType="Allow";users="*";permissions="Read"}
-Add-WebConfiguration -Filter "system.ftpServer/security/authorization" -PSPath "IIS:\Sites\FTP" -Value @{accessType="Allow";roles="ftpusers";permissions="Read,Write"}
+# Agregar reglas correctamente (Si ya existen, no tira error)
+Add-WebConfiguration -Filter "system.ftpServer/security/authorization" -PSPath "IIS:\Sites\FTP" -Value @{accessType="Allow";users="*";permissions="Read"} -ErrorAction SilentlyContinue
+Add-WebConfiguration -Filter "system.ftpServer/security/authorization" -PSPath "IIS:\Sites\FTP" -Value @{accessType="Allow";roles="ftpusers";permissions="Read,Write"} -ErrorAction SilentlyContinue
 
-# Configurar SSL correctamente usando Set-ItemProperty (Elimina los WARNINGS)
+# Configurar SSL correctamente usando Set-ItemProperty
 Set-ItemProperty "IIS:\Sites\FTP" -Name ftpServer.security.ssl.controlChannelPolicy -Value "SslAllow"
 Set-ItemProperty "IIS:\Sites\FTP" -Name ftpServer.security.ssl.dataChannelPolicy -Value "SslAllow"
 
