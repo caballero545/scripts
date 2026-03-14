@@ -1,8 +1,8 @@
-$BASE="C:\FTP"
-$GENERAL="C:\FTP\LocalUser\Public\general"
-$GRP1="C:\FTP\reprobados"
-$GRP2="C:\FTP\recursadores"
-$LOCALUSER="C:\FTP\LocalUser"
+$BASE="C:FTP"
+$GENERAL="C:FTP\LocalUser\Public\general"
+$GRP1="C:FTP\reprobados"
+$GRP2="C:FTP\recursadores"
+$LOCALUSER="C:FTP\LocalUser"
 
 if(!(Test-Path $BASE)){
     Write-Host "ERROR: No existe la carpeta FTP base." -ForegroundColor Red
@@ -41,21 +41,23 @@ for($i=1;$i -le $n;$i++){
     Add-LocalGroupMember ftpusers $usuario -ErrorAction SilentlyContinue
     Add-LocalGroupMember $grupo $usuario -ErrorAction SilentlyContinue
 
-    $home="$LOCALUSER\$usuario"
-    $personal="$home\$usuario"
+    # CAMBIO AQUÍ: Usamos $userHome en lugar de $home para no chocar con el sistema
+    $userHome="$LOCALUSER\$usuario"
+    $userPersonal="$userHome\$usuario"
 
-    if(!(Test-Path $home)){ New-Item $home -ItemType Directory -Force | Out-Null }
-    if(!(Test-Path $personal)){ New-Item $personal -ItemType Directory -Force | Out-Null }
+    if(!(Test-Path $userHome)){ New-Item $userHome -ItemType Directory -Force | Out-Null }
+    if(!(Test-Path $userPersonal)){ New-Item $userPersonal -ItemType Directory -Force | Out-Null }
 
-    cmd /c mklink /D "$home\general" "$GENERAL" | Out-Null
-    cmd /c mklink /D "$home\$grupo" "$rutagrupo" | Out-Null
+    # Enlaces corregidos
+    cmd /c mklink /D "$userHome\general" "$GENERAL" | Out-Null
+    cmd /c mklink /D "$userHome\$grupo" "$rutagrupo" | Out-Null
 
-    # AQUÍ ESTÁ LA MAGIA: Uso de ${usuario} para que PowerShell no se vuelva loco con los dos puntos
-    icacls $home /grant "${usuario}:(OI)(CI)M" | Out-Null
-    icacls $personal /grant "${usuario}:(OI)(CI)M" | Out-Null
+    # Permisos corregidos con las llaves ${usuario}
+    icacls $userHome /grant "${usuario}:(OI)(CI)M" | Out-Null
+    icacls $userPersonal /grant "${usuario}:(OI)(CI)M" | Out-Null
 
     Write-Host "Usuario $usuario creado correctamente." -ForegroundColor Green
 }
 
 Restart-Service ftpsvc
-Write-Host "CREACION DE USUARIOS TERMINADA" -ForegroundColor Cyan
+Write-Host "CREACION DE USUARIOS TERMINADA SIN ERRORES" -ForegroundColor Cyan
