@@ -23,6 +23,11 @@ Write-Host "Permisos vhome (necesarios para IIS)..."
 icacls "C:\FTP\vhome" /grant "Users:(RX)"
 icacls "C:\FTP\vhome\LocalUser" /grant "Users:(RX)"
 
+Add-WebConfiguration `
+-Filter "system.ftpServer/security" `
+-PSPath "IIS:\Sites\FTP" `
+-Value @{ssl=@{}}
+
 Set-WebConfigurationProperty `
 -Filter "system.ftpServer/security/ssl" `
 -Name controlChannelPolicy `
