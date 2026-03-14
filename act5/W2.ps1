@@ -50,9 +50,9 @@ for($i=1;$i -le $n;$i++){
     cmd /c mklink /D "$home\general" "$GENERAL" | Out-Null
     cmd /c mklink /D "$home\$grupo" "$rutagrupo" | Out-Null
 
-    # Permisos
-    icacls $home /grant "$usuario:(OI)(CI)M" | Out-Null
-    icacls $personal /grant "$usuario:(OI)(CI)M" | Out-Null
+    # AQUÍ ESTÁ LA MAGIA: Uso de ${usuario} para que PowerShell no se vuelva loco con los dos puntos
+    icacls $home /grant "${usuario}:(OI)(CI)M" | Out-Null
+    icacls $personal /grant "${usuario}:(OI)(CI)M" | Out-Null
 
     Write-Host "Usuario $usuario creado correctamente." -ForegroundColor Green
 }
