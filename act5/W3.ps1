@@ -33,26 +33,31 @@ Clear-WebConfiguration `
 -PSPath "IIS:\" `
 -Location "FTP"
 
-# permitir lectura a todos
 Add-WebConfiguration `
 -Filter "system.ftpServer/security/authorization" `
 -PSPath "IIS:\" `
 -Location "FTP" `
 -Value @{accessType="Allow";users="*";permissions="Read"}
 
-# permitir lectura y escritura al grupo ftpusers
 Add-WebConfiguration `
 -Filter "system.ftpServer/security/authorization" `
 -PSPath "IIS:\" `
 -Location "FTP" `
 -Value @{accessType="Allow";roles="ftpusers";permissions="Read,Write"}
 
-# Crear la sección SSL en el sitio FTP
-Add-WebConfiguration `
+Set-WebConfigurationProperty `
+-Filter "system.ftpServer/security/ssl" `
 -PSPath "IIS:\" `
 -Location "FTP" `
--Filter "system.ftpServer/security" `
--Value @{ssl=@{controlChannelPolicy="SslAllow";dataChannelPolicy="SslAllow"}}
+-Name controlChannelPolicy `
+-Value SslAllow
+
+Set-WebConfigurationProperty `
+-Filter "system.ftpServer/security/ssl" `
+-PSPath "IIS:\" `
+-Location "FTP" `
+-Name dataChannelPolicy `
+-Value SslAllow
 
 # Reiniciar el servicio FTP
 Restart-Service ftpsvc
