@@ -3,7 +3,6 @@ $FTP="C:\FTP"
 Write-Host "Aplicando permisos base..."
 
 icacls $FTP /inheritance:r
-
 icacls $FTP /grant "Administrators:(OI)(CI)F"
 icacls $FTP /grant "SYSTEM:(OI)(CI)F"
 icacls $FTP /grant "IIS_IUSRS:(OI)(CI)RX"
@@ -18,27 +17,47 @@ Write-Host "Permisos carpetas de grupo..."
 icacls "C:\FTP\usuarios\reprobados" /grant "reprobados:(OI)(CI)M"
 icacls "C:\FTP\usuarios\recursadores" /grant "recursadores:(OI)(CI)M"
 
-Write-Host "Permisos vhome (necesarios para IIS)..."
+Write-Host "Permisos vhome..."
 
 icacls "C:\FTP\vhome" /grant "Users:(RX)"
+icacls "C:\FTP\vhome" /grant "ftpusers:(RX)"
+
 icacls "C:\FTP\vhome\LocalUser" /grant "Users:(RX)"
+icacls "C:\FTP\vhome\LocalUser" /grant "ftpusers:(OI)(CI)RX"
 
 Import-Module WebAdministration
 
-# Crear la sección SSL en el sitio FTP
+Clear-WebConfiguration `
+-Filter "system.ftpServer/security/authorization" `
+-PSPath "IIS:\" `
+-Location "FTP"
+
 Add-WebConfiguration `
+-Filter "system.ftpServer/security/authorization" `
 -PSPath "IIS:\" `
 -Location "FTP" `
--Filter "system.ftpServer/security" `
--Value @{ssl=@{controlChannelPolicy="SslAllow";dataChannelPolicy="SslAllow"}}
+-Value @{accessType="Allow";users="*";permissions="Read"}
 
-# Reiniciar el servicio FTP
+Add-WebConfiguration `
+-Filter "system.ftpServer/security/authorization" `
+-PSPath "IIS:\" `
+-Location "FTP" `
+-Value @{accessType="Allow";roles="ftpusers";permissions="Read,Write"}
+
+Set-WebConfigurationProperty `
+-Filter "system.ftpServer/security/ssl" `
+-PSPath "IIS:\" `
+-Location "FTP" `
+-Name controlChannelPolicy `
+-Value SslAllow
+
+Set-WebConfigurationProperty `
+-Filter "system.ftpServer/security/ssl" `
+-PSPath "IIS:\" `
+-Location "FTP" `
+-Name dataChannelPolicy `
+-Value SslAllow
+
 Restart-Service ftpsvc
-
-# Verificar configuración
-Get-WebConfiguration `
--PSPath "IIS:\" `
--Location "FTP" `
--Filter "system.ftpServer/security/ssl"
 
 Write-Host "Permisos aplicados correctamente."
