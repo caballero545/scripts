@@ -1,71 +1,60 @@
 # ===============================================
-# SCRIPT 2: CREACIÓN DE USUARIOS (VERSIÓN FINAL)
+# SCRIPT 2: CREACIÓN / REPARACIÓN DE USUARIOS
 # ===============================================
+$BASE = "C:\FTP"
+$LOCALUSER = "C:\FTP\LocalUser"
+$GENERAL = "C:\FTP\LocalUser\Public\general"
+$GRP_REPRO = "C:\FTP\reprobados"
+$GRP_RECUR = "C:\FTP\recursadores"
 
-$BASE="C:\FTP"
-$GENERAL="C:\FTP\LocalUser\Public\general"
-$GRP1="C:\FTP\reprobados"
-$GRP2="C:\FTP\recursadores"
-$LOCALUSER="C:\FTP\LocalUser"
-
-# Verificación de carpeta base
-if(!(Test-Path $BASE)){
-    Write-Host "ERROR: No existe la carpeta FTP base en C:\FTP" -ForegroundColor Red
-    exit
+# 1. Verificar Carpeta Raíz
+if (!(Test-Path $BASE)) { 
+    Write-Host "ERROR: No existe C:\FTP. Corre el Script 1 primero." -ForegroundColor Red
+    exit 
 }
 
-$n = Read-Host "Numero de usuarios a crear"
-if($n -notmatch '^\d+$'){ Write-Host "Numero invalido." -ForegroundColor Red; exit }
+$n = Read-Host "¿Cuántos alumnos vas a procesar?"
 
-for($i=1; $i -le $n; $i++){
-    Write-Host "`n==============================="
-    Write-Host "    CREACION DE USUARIO $i"
-    Write-Host "==============================="
-
-    $usuario = Read-Host "Nombre de usuario"
-    if([string]::IsNullOrWhiteSpace($usuario)){ Write-Host "Usuario invalido" -ForegroundColor Red; continue }
-    if(Get-LocalUser $usuario -ErrorAction SilentlyContinue){ Write-Host "El usuario $usuario ya existe. Saltando..." -ForegroundColor Yellow; continue }
-
-    $pass = Read-Host "Password (puedes usar 1234)" -AsSecureString
-
-    Write-Host "Seleccione Grupo:"
-    Write-Host "1 = reprobados"
-    Write-Host "2 = recursadores"
-    $op = Read-Host "Opcion"
-
-    if($op -eq "1"){ $grupo="reprobados"; $rutagrupo=$GRP1 }
-    elseif($op -eq "2"){ $grupo="recursadores"; $rutagrupo=$GRP2 }
-    else{ Write-Host "Grupo invalido." -ForegroundColor Red; continue }
-
-    try {
-        # Crear usuario en el sistema
-        New-LocalUser $usuario -Password $pass -ErrorAction Stop | Out-Null
+for ($i = 1; $i -le $n; $i++) {
+    Write-Host "`n--- Procesando Usuario $i ---" -ForegroundColor Cyan
+    $usuario = Read-Host "Nombre del alumno (ej. k1)"
+    
+    # 2. Crear usuario si no existe
+    if (!(Get-LocalUser $usuario -ErrorAction SilentlyContinue)) {
+        $pass = Read-Host "Contraseña para $usuario" -AsSecureString
+        New-LocalUser $usuario -Password $pass | Out-Null
         Add-LocalGroupMember ftpusers $usuario -ErrorAction SilentlyContinue
-        Add-LocalGroupMember $grupo $usuario -ErrorAction SilentlyContinue
-
-        # Definir carpetas (Cambiamos $home por $userHome para evitar errores de sistema)
-        $userHome = "$LOCALUSER\$usuario"
-        $userPersonal = "$userHome\$usuario"
-
-        # Crear directorios físicos
-        if(!(Test-Path $userHome)){ New-Item $userHome -ItemType Directory -Force | Out-Null }
-        if(!(Test-Path $userPersonal)){ New-Item $userPersonal -ItemType Directory -Force | Out-Null }
-
-        # Crear Enlaces Simbólicos (Puentes de aislamiento)
-        cmd /c mklink /D "$userHome\general" "$GENERAL" | Out-Null
-        cmd /c mklink /D "$userHome\$grupo" "$rutagrupo" | Out-Null
-
-        # Aplicar Permisos NTFS (Usando ${usuario} para evitar error de sintaxis)
-        icacls $userHome /grant "${usuario}:(OI)(CI)M" /Q | Out-Null
-        icacls $userPersonal /grant "${usuario}:(OI)(CI)M" /Q | Out-Null
-
-        Write-Host "Usuario $usuario creado y configurado correctamente." -ForegroundColor Green
+        Write-Host "Usuario $usuario creado en el sistema." -ForegroundColor Yellow
     }
-    catch {
-        Write-Host "Error fatal al crear el usuario: $($_.Exception.Message)" -ForegroundColor Red
+
+    # 3. Asignar Grupo
+    $op = Read-Host "Grupo (1: Reprobados, 2: Recursadores)"
+    $nomGrupo = if ($op -eq "1") { "reprobados" } else { "recursadores" }
+    $rutaGrupo = if ($op -eq "1") { $GRP_REPRO } else { $GRP_RECUR }
+    Add-LocalGroupMember $nomGrupo $usuario -ErrorAction SilentlyContinue
+
+    # 4. LA PARTE CRÍTICA: Crear la "casa" del usuario
+    $uHome = "$LOCALUSER\$usuario"
+    if (!(Test-Path $uHome)) { 
+        New-Item $uHome -ItemType Directory -Force | Out-Null 
     }
+
+    # 5. Crear los "puentes" (Links)
+    # Borramos links viejos por si acaso
+    cmd /c rmdir "$uHome\general" 2>$null
+    cmd /c rmdir "$uHome\$nomGrupo" 2>$null
+    
+    # Creamos los nuevos (estilo compa)
+    cmd /c mklink /D "$uHome\general" "$GENERAL" | Out-Null
+    cmd /c mklink /D "$uHome\$nomGrupo" "$rutaGrupo" | Out-Null
+
+    # 6. Permisos NTFS (Usando ${usuario} para evitar el error anterior)
+    icacls $uHome /inheritance:r | Out-Null
+    icacls $uHome /grant "Administradores:(OI)(CI)F" | Out-Null
+    icacls $uHome /grant "${usuario}:(OI)(CI)M" | Out-Null
+
+    Write-Host "¡Listo! Carpeta y permisos para $usuario configurados." -ForegroundColor Green
 }
 
-# Reiniciar para aplicar cambios en IIS
 Restart-Service ftpsvc
-Write-Host "`nPROCESO TERMINADO - SERVICIO FTP REINICIADO" -ForegroundColor Cyan
+Write-Host "`nServicio reiniciado. Prueba loguearte ahora." -ForegroundColor Cyan
