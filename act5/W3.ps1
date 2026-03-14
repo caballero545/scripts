@@ -60,4 +60,4 @@ Set-WebConfigurationProperty `
 
 Restart-Service ftpsvc
 
-Write-Host "Permisos aplicados correctamente."
+Write-Host "Permisos aplicados correctamente"
