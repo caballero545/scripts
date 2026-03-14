@@ -1,98 +1,35 @@
-Write-Host ""
 Write-Host "================================="
 Write-Host "   VERIFICACION DEL SERVIDOR FTP"
 Write-Host "================================="
 
 $FTP="C:\FTP"
-$BASE="C:\FTP\usuarios"
-$VHOME="C:\FTP\vhome\LocalUser"
+$VHOME="C:\FTP\LocalUser"
 
-Write-Host ""
-Write-Host "----- Estado del servicio FTP -----"
+Write-Host "`n----- Estado del servicio FTP -----"
+Get-Service ftpsvc | Format-Table
 
-Get-Service ftpsvc
-
-Write-Host ""
 Write-Host "----- Sitio FTP en IIS -----"
-
 Import-Module WebAdministration
-Get-ChildItem IIS:\Sites
+Get-ChildItem IIS:\Sites | Format-Table
 
-Write-Host ""
 Write-Host "----- Modo de aislamiento de usuarios -----"
-
 Get-ItemProperty IIS:\Sites\FTP | Select ftpServer.userIsolation.mode
 
-Write-Host ""
-Write-Host "----- Grupos del sistema -----"
+Write-Host "`n----- Miembros de grupos -----"
+Write-Host "Reprobados:"
+Get-LocalGroupMember reprobados -ErrorAction SilentlyContinue | Select -ExpandProperty Name
+Write-Host "Recursadores:"
+Get-LocalGroupMember recursadores -ErrorAction SilentlyContinue | Select -ExpandProperty Name
 
-Get-LocalGroup reprobados
-Get-LocalGroup recursadores
-Get-LocalGroup ftpusers
+Write-Host "`n----- Homes de usuarios (LocalUser) -----"
+Get-ChildItem $VHOME | Format-Table Name
 
-Write-Host ""
-Write-Host "----- Miembros del grupo reprobados -----"
+Write-Host "`n----- Junctions/Links dentro de LocalUser -----"
+Get-ChildItem $VHOME -Recurse -Depth 1 -ErrorAction SilentlyContinue | Where-Object {$_.LinkType} | Format-Table FullName, Target
 
-Get-LocalGroupMember reprobados -ErrorAction SilentlyContinue
+Write-Host "`n----- Permisos NTFS de GENERAL -----"
+icacls "C:\FTP\LocalUser\Public\general"
 
-Write-Host ""
-Write-Host "----- Miembros del grupo recursadores -----"
-
-Get-LocalGroupMember recursadores -ErrorAction SilentlyContinue
-
-Write-Host ""
-Write-Host "----- Estructura principal FTP -----"
-
-Get-ChildItem $FTP
-
-Write-Host ""
-Write-Host "----- Carpetas de grupos -----"
-
-Get-ChildItem $BASE
-
-Write-Host ""
-Write-Host "----- Homes de usuarios (vhome) -----"
-
-Get-ChildItem $VHOME
-
-Write-Host ""
-Write-Host "----- Junctions dentro de vhome -----"
-
-Get-ChildItem $VHOME -Recurse -Depth 1 -ErrorAction SilentlyContinue | Where-Object {$_.LinkType}
-
-Write-Host ""
-Write-Host "----- Permisos NTFS de GENERAL -----"
-
-icacls "$FTP\general"
-
-Write-Host ""
-Write-Host "----- Permisos NTFS REPROBADOS -----"
-
-icacls "$BASE\reprobados"
-
-Write-Host ""
-Write-Host "----- Permisos NTFS RECURSADORES -----"
-
-icacls "$BASE\recursadores"
-
-Write-Host ""
-Write-Host "----- Permisos de cada usuario -----"
-
-Get-ChildItem $VHOME -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-    $user = $_.Name
-    Write-Host ""
-    Write-Host ">>> Analizando permisos para: $user" -ForegroundColor Yellow
-    
-    # Si el admin no tiene acceso, esto fallará, pero no detendrá el script
-    icacls "$VHOME\$user" 2>$null
-}
-
-Write-Host ""
-Write-Host "----- Acceso anonimo -----"
-
-Get-ItemProperty IIS:\Sites\FTP | Select ftpServer.security.authentication.anonymousAuthentication.enabled
-
-Write-Host ""
-Write-Host "================================="
+Write-Host "`n================================="
 Write-Host "   FIN DE VERIFICACION FTP"
 Write-Host "================================="

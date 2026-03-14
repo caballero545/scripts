@@ -1,7 +1,6 @@
-Write-Host "Reiniciando servidor FTP..."
+Write-Host "Reiniciando servidor FTP..." -ForegroundColor Cyan
 
 Restart-Service ftpsvc
+Get-Service ftpsvc | Format-Table
 
-Get-Service ftpsvc
-
-Write-Host "Servidor FTP listo."
+Write-Host "Servidor FTP listo y al cien." -ForegroundColor Green

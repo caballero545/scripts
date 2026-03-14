@@ -1,21 +1,15 @@
 Import-Module WebAdministration
 
-Write-Host "Configurando acceso anonimo..."
+Write-Host "Configurando acceso anonimo..." -ForegroundColor Cyan
 
-# Habilitar anónimo en IIS
 Set-ItemProperty IIS:\Sites\FTP -name ftpServer.security.authentication.anonymousAuthentication.enabled -value $true
 
-# CREAR CARPETA PUBLIC PARA EL AISLAMIENTO
-$PUBLIC_HOME = "C:\FTP\vhome\LocalUser\Public"
-if(!(Test-Path $PUBLIC_HOME)){
-    New-Item $PUBLIC_HOME -ItemType Directory -Force | Out-Null
-    # Le creamos su acceso directo a la carpeta general
-    cmd /c mklink /J "$PUBLIC_HOME\general" "C:\FTP\general"
-}
+$PUBLIC_HOME = "C:\FTP\LocalUser\Public"
+if(!(Test-Path $PUBLIC_HOME)){ New-Item $PUBLIC_HOME -ItemType Directory -Force | Out-Null }
 
-# Permisos para el usuario anónimo de IIS (IUSR) con herencia (OI)(CI)
-icacls "C:\FTP\general" /grant "IUSR:(OI)(CI)RX"
-icacls $PUBLIC_HOME /grant "IUSR:(OI)(CI)RX"
+# IIS usa IUSR para anónimos
+icacls "C:\FTP\LocalUser\Public\general" /grant "IUSR:(OI)(CI)RX" | Out-Null
+icacls $PUBLIC_HOME /grant "IUSR:(OI)(CI)RX" | Out-Null
 
 Restart-Service ftpsvc
-Write-Host "Acceso anonimo configurado (Carpeta Public creada)." -ForegroundColor Green
+Write-Host "Acceso anonimo configurado." -ForegroundColor Green
