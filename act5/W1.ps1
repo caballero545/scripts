@@ -30,13 +30,13 @@ New-Item C:\FTP\LocalUser -ItemType Directory -Force
 Write-Host "PERMISOS BASE"
 
 icacls C:\FTP /inheritance:r
-icacls C:\FTP /grant Administrators:(OI)(CI)F
-icacls C:\FTP /grant SYSTEM:(OI)(CI)F
-icacls C:\FTP /grant IIS_IUSRS:(OI)(CI)RX
+icacls C:\FTP /grant "Administrators:(OI)(CI)F"
+icacls C:\FTP /grant "SYSTEM:(OI)(CI)F"
+icacls C:\FTP /grant "IIS_IUSRS:(OI)(CI)RX"
 
-icacls C:\FTP\general /grant ftpusers:(OI)(CI)M
-icacls C:\FTP\reprobados /grant reprobados:(OI)(CI)M
-icacls C:\FTP\recursadores /grant recursadores:(OI)(CI)M
+icacls C:\FTP\general /grant "ftpusers:(OI)(CI)M"
+icacls C:\FTP\reprobados /grant "reprobados:(OI)(CI)M"
+icacls C:\FTP\recursadores /grant "recursadores:(OI)(CI)M"
 
 Write-Host "CREANDO SITIO FTP"
 
