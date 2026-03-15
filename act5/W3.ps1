@@ -15,7 +15,7 @@ Write-Host "======================================" -ForegroundColor Cyan
 # 1 TOMAR POSESION TOTAL DEL FTP
 #---------------------------------------------------
 
-Write-Host "Tomando control del sistema FTP..." -ForegroundColor Yellow
+Write-Host "Tomando control del sistema FTP......" -ForegroundColor Yellow
 
 cmd /c "takeown /f $BASE /r /d y" | Out-Null
 cmd /c "icacls $BASE /grant Administrators:(OI)(CI)F /T /C /Q" | Out-Null
