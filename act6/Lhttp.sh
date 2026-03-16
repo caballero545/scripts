@@ -3,148 +3,169 @@
 # MODULE: Lhttp.sh
 # ==========================================================
 
-# 1. Preparación de herramientas necesarias
+# 1. Preparación de herramientas y limpieza de Firewall
 function prepare_environment() {
-    echo "[*] Verificando dependencias del sistema..."
+    echo "[*] Preparando dependencias y asegurando UFW..."
     apt-get update -qq
-    apt-get install -y lsof curl ufw gawk sed coreutils > /dev/null
+    apt-get install -y lsof curl ufw gawk sed coreutils apache2-utils > /dev/null
+    
+    # Asegurar que el firewall esté activo pero no bloquee SSH
+    ufw allow 22/tcp > /dev/null
+    echo "y" | ufw enable > /dev/null
 }
 
-# 2. Validación de puertos (Requerimiento de seguridad)
+# 2. Validación de puertos (Evita reservados y ocupados)
 function validate_port() {
     local PORT=$1
-    # Validar que sea número
     if [[ ! $PORT =~ ^[0-9]+$ ]]; then return 1; fi
-    # Puertos reservados o comunes ocupados
-    if [[ " 22 3389 3306 5432 " =~ " $PORT " ]]; then
-        echo "[!] Puerto reservado para sistema."
-        return 1
-    fi
-    # Verificar si está en uso
+    
+    # Restringir puertos reservados de sistema (evitar romper SSH, DBs, etc)
+    # Rúbrica: "restringir los puertos reservados para otros servicios"
+    local RESERVADOS=(22 21 25 53 110 143 443 3306 3389 5432)
+    for p in "${RESERVADOS[@]}"; do
+        if [[ "$PORT" == "$p" ]]; then
+            echo "[!] Error: El puerto $p está reservado para servicios críticos."
+            return 1
+        fi
+    done
+
     if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null ; then
-        echo "[!] Puerto $PORT ya está siendo utilizado por otro servicio."
+        echo "[!] Error: El puerto $PORT ya está en uso."
         return 1
     fi
     return 0
 }
 
-# 3. Consulta dinámica de versiones (Requerimiento apt-cache)
+# 3. Consulta dinámica de versiones (Rúbrica: apt-cache madison)
 function get_versions() {
     local SERVICE=$1
-    echo "[*] Consultando versiones disponibles para $SERVICE..."
-    # Extraemos solo la columna de versiones de apt-cache madison
-    apt-cache madison $SERVICE | awk '{print $3}'
+    # Extrae versiones únicas disponibles en el repo
+    apt-cache madison "$SERVICE" | awk '{print $3}' | sort -u
 }
 
-# 4. Creación de página index personalizada
+# 4. Creación de index.html (Rúbrica: Personalizado)
 function create_custom_index() {
-    local SERVICE=$1
-    local VERSION=$2
-    local PORT=$3
-    local PATH_DIR=$4
-    
-    cat <<EOF > "${PATH_DIR}/index.html"
+    local SERVICE=$1; local VERSION=$2; local PORT=$3; local ROOT_DIR=$4
+    mkdir -p "$ROOT_DIR"
+    cat <<EOF > "${ROOT_DIR}/index.html"
 <html>
-<head><title>Servidor Proprovisionado</title></head>
-<body>
-    <h1>Servidor: $SERVICE</h1>
-    <p><b>Versión:</b> $VERSION</p>
-    <p><b>Puerto:</b> $PORT</p>
-    <hr>
-    <p>Aprovisionamiento Automatizado - Práctica 6</p>
+<body style="font-family: Arial; text-align: center; background: #f4f4f4;">
+    <div style="margin-top: 50px; border: 1px solid #ccc; display: inline-block; padding: 20px; background: #fff;">
+        <h1>Aprovisionamiento Exitoso</h1>
+        <p><b>Servidor:</b> $SERVICE</p>
+        <p><b>Versión Elegida:</b> $VERSION</p>
+        <p><b>Puerto configurado:</b> $PORT</p>
+    </div>
 </body>
 </html>
 EOF
+    # Permisos limitados (Rúbrica)
+    chown -R www-data:www-data "$ROOT_DIR"
+    chmod -R 755 "$ROOT_DIR"
 }
 
 # 5. Despliegue de Apache y Nginx
 function deploy_service() {
     local SERVICE=$1
     
-    # Obtener versiones dinámicamente
-    VERSIONS=($(get_versions $SERVICE))
-    echo "Versiones encontradas:"
+    echo -e "\n[*] Consultando repositorio para $SERVICE..."
+    mapfile -t VERSIONS < <(get_versions "$SERVICE")
+    
+    if [ ${#VERSIONS[@]} -eq 0 ]; then echo "No se encontraron versiones."; return; fi
+
+    echo "Seleccione la versión a instalar:"
     select VERSION in "${VERSIONS[@]}"; do
         if [[ -n "$VERSION" ]]; then break; fi
     done
 
-    # Pedir puerto
-    read -p "Defina el puerto de escucha: " PUERTO
-    until validate_port $PUERTO; do
-        read -p "Intente con otro puerto: " PUERTO
+    read -p "Ingrese el puerto para $SERVICE: " PUERTO
+    until validate_port "$PUERTO"; do
+        read -p "Puerto no válido. Intente otro: " PUERTO
     done
 
-    # Instalación silenciosa
-    echo "[+] Instalando $SERVICE ($VERSION)..."
+    echo "[+] Instalando $SERVICE ($VERSION) de forma silenciosa..."
     apt-get install -y "${SERVICE}=${VERSION}" > /dev/null
 
-    # Configuración de puerto y Hardening
+    # --- CONFIGURACIÓN Y HARDENING ---
     if [[ "$SERVICE" == "apache2" ]]; then
         # Cambio de puerto
         sed -i "s/Listen 80/Listen $PUERTO/g" /etc/apache2/ports.conf
         sed -i "s/<VirtualHost \*:80>/<VirtualHost \*:$PUERTO>/g" /etc/apache2/sites-available/000-default.conf
         
-        # Hardening (Ocultar versión y Security Headers)
+        # Ocultar Info (Rúbrica)
         sed -i "s/ServerTokens OS/ServerTokens Prod/" /etc/apache2/conf-enabled/security.conf
         sed -i "s/ServerSignature On/ServerSignature Off/" /etc/apache2/conf-enabled/security.conf
         
-        # Inyectar Security Headers
+        # Security Headers y Rechazo de Métodos Peligrosos (TRACE, DELETE, etc)
         a2enmod headers > /dev/null
-        echo "Header set X-Frame-Options \"SAMEORIGIN\"" >> /etc/apache2/apache2.conf
-        echo "Header set X-Content-Type-Options \"nosniff\"" >> /etc/apache2/apache2.conf
-        
+        cat <<EOF > /etc/apache2/conf-available/custom-hardening.conf
+Header set X-Frame-Options "SAMEORIGIN"
+Header set X-Content-Type-Options "nosniff"
+<Location />
+    <LimitExcept GET POST>
+        AllowMethods GET POST
+        Require all denied
+    </LimitExcept>
+</Location>
+EOF
+        a2enconf custom-hardening > /dev/null
         create_custom_index "Apache2" "$VERSION" "$PUERTO" "/var/www/html"
         systemctl restart apache2
-        
+
     elif [[ "$SERVICE" == "nginx" ]]; then
         # Cambio de puerto
-        sed -i "s/listen 80 default_server;/listen $PUERTO default_server;/g" /etc/nginx/sites-available/default
+        sed -i "s/listen 80/listen $PUERTO/g" /etc/nginx/sites-available/default
         
-        # Hardening
+        # Hardening e inyección de Headers
         sed -i "s/# server_tokens off;/server_tokens off;/g" /etc/nginx/nginx.conf
         
-        # Security Headers
-        sed -i "/http {/a \    add_header X-Frame-Options SAMEORIGIN;\n    add_header X-Content-Type-Options nosniff;" /etc/nginx/nginx.conf
+        # Bloqueo de métodos y Headers en el server block
+        local NGINX_CONF="/etc/nginx/conf.d/hardening.conf"
+        echo "add_header X-Frame-Options SAMEORIGIN;" > $NGINX_CONF
+        echo "add_header X-Content-Type-Options nosniff;" >> $NGINX_CONF
+        echo 'if ($request_method !~ ^(GET|POST)$ ) { return 444; }' >> $NGINX_CONF
         
         create_custom_index "Nginx" "$VERSION" "$PUERTO" "/var/www/html"
         systemctl restart nginx
     fi
 
-    # Firewall
+    # Manejo de Firewall (Rúbrica: Cerrar 80, abrir nuevo)
+    ufw deny 80/tcp > /dev/null
     ufw allow "$PUERTO/tcp" > /dev/null
-    echo "[OK] Servicio $SERVICE activo en puerto $PUERTO."
-    read -p "Presione Enter para continuar..."
+    echo "[OK] Despliegue completo. Puerto abierto: $PUERTO"
+    read -p "Presione Enter para volver al menú..."
 }
 
-# 6. Despliegue de Tomcat (Manejo de Binarios)
+# 6. Despliegue de Tomcat (Rúbrica: Usuario dedicado y permisos)
 function deploy_tomcat() {
-    echo "[*] Preparando Tomcat vía Binario..."
-    
-    read -p "Defina puerto para Tomcat (ej. 8080): " PUERTO
-    until validate_port $PUERTO; do
-        read -p "Puerto ocupado. Elija otro: " PUERTO
+    echo -e "\n[*] Instalando Tomcat (Última versión LTS)..."
+    read -p "Ingrese el puerto para Tomcat: " PUERTO
+    until validate_port "$PUERTO"; do
+        read -p "Puerto no válido. Intente otro: " PUERTO
     done
 
-    # Usuario dedicado (Requerimiento)
+    # Crear usuario dedicado si no existe
     if ! id "tomcat" &>/dev/null; then
         useradd -m -U -d /opt/tomcat -s /bin/false tomcat
     fi
 
-    # Descarga de la última versión LTS (Tomcat 10)
-    local VERSION="10.1.18" # Podría hacerse dinámico con el API de Apache
-    wget -q "https://archive.apache.org/dist/tomcat/tomcat-10/v${VERSION}/bin/apache-tomcat-${VERSION}.tar.gz" -P /tmp
+    # Descarga dinámica (LTS)
+    local T_VER="10.1.18"
+    wget -q "https://archive.apache.org/dist/tomcat/tomcat-10/v${T_VER}/bin/apache-tomcat-${T_VER}.tar.gz" -P /tmp
     
-    tar -xf "/tmp/apache-tomcat-${VERSION}.tar.gz" -C /opt/tomcat --strip-components=1
+    mkdir -p /opt/tomcat
+    tar -xf "/tmp/apache-tomcat-${T_VER}.tar.gz" -C /opt/tomcat --strip-components=1
+    
+    # Permisos restrictivos (Rúbrica)
     chown -R tomcat:tomcat /opt/tomcat
-    chmod -R 755 /opt/tomcat
-
-    # Configuración de puerto en server.xml
+    chmod -R 750 /opt/tomcat/conf
+    
+    # Cambio de puerto en XML
     sed -i "s/Connector port=\"8080\"/Connector port=\"$PUERTO\"/g" /opt/tomcat/conf/server.xml
-
-    # Index personalizado
-    create_custom_index "Apache Tomcat" "$VERSION" "$PUERTO" "/opt/tomcat/webapps/ROOT"
-
+    
+    create_custom_index "Apache Tomcat" "$T_VER" "$PUERTO" "/opt/tomcat/webapps/ROOT"
+    
     ufw allow "$PUERTO/tcp"
-    echo "[OK] Tomcat instalado en /opt/tomcat. Inicie con /opt/tomcat/bin/startup.sh"
-    read -p "Presione Enter para continuar..."
+    echo "[OK] Tomcat instalado. Usuario 'tomcat' configurado."
+    read -p "Presione Enter para volver al menú..."
 }

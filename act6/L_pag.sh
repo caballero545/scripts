@@ -3,40 +3,44 @@
 # MAIN SCRIPT: provisioner_linux.sh
 # ==========================================================
 
-# Cargar el módulo de funciones
-if [[ -f "./Lhttp.sh" ]]; then
-    source ./http_functions.sh
+# RUTA CORRECTA: El punto indica el directorio actual
+# No se usa sudo dentro del source, se corre el script con sudo
+FUNCTIONS_FILE="./Lhttp.sh"
+
+if [[ -f "$FUNCTIONS_FILE" ]]; then
+    source "$FUNCTIONS_FILE"
 else
-    echo "Error: No se encontró http_functions.sh"
+    echo "Error crítico: No se encontró el archivo de funciones $FUNCTIONS_FILE"
     exit 1
 fi
 
-# Asegurar privilegios de root
+# Validación de privilegios
 if [[ $EUID -ne 0 ]]; then
-   echo "Este script debe ejecutarse como root (sudo)." 
+   echo "CRÍTICO: Debes ejecutar este script con sudo." 
    exit 1
 fi
 
-# Preparación inicial del entorno
+# 1. Preparar el sistema una sola vez al inicio
 prepare_environment
 
+# 2. Menú Interactivo
 while true; do
     clear
     echo "=========================================================="
-    echo "    SISTEMA DE PROVISIÓN HTTP - UBUNTU SERVER"
+    echo "     PROVISIONADOR HTTP AUTOMATIZADO (SSH MODE)"
     echo "=========================================================="
-    echo "1) Instalar Apache2"
-    echo "2) Instalar Nginx"
-    echo "3) Instalar Apache Tomcat"
+    echo "1) Desplegar Apache2 (Dinamico)"
+    echo "2) Desplegar Nginx (Dinamico)"
+    echo "3) Desplegar Apache Tomcat (Manual/Seguro)"
     echo "4) Salir"
     echo "----------------------------------------------------------"
-    read -p "Seleccione una opción: " OPT
+    read -p "Seleccione una opción [1-4]: " OPT
 
     case $OPT in
         1) deploy_service "apache2" ;;
         2) deploy_service "nginx" ;;
         3) deploy_tomcat ;;
-        4) echo "Saliendo..."; exit 0 ;;
-        *) echo "Opción no válida."; sleep 2 ;;
+        4) echo "Cerrando sesión de aprovisionamiento."; exit 0 ;;
+        *) echo "Opción inválida. Intente de nuevo."; sleep 1 ;;
     esac
 done
