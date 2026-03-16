@@ -5,6 +5,9 @@ $LOCAL="C:\FTP\LocalUser"
 $PUBLIC="C:\FTP\LocalUser\Public"
 $GENERAL="C:\FTP\LocalUser\Public\General"
 
+#-------------------------------------------------------
+# PREPARAR SERVIDOR
+#-------------------------------------------------------
 function Preparar-ServidorFTP {
 
 Write-Host "`n===== CONFIGURANDO SERVIDOR FTP =====" -ForegroundColor Cyan
@@ -17,11 +20,9 @@ cmd /c "takeown /f C:\FTP /r /d y >nul 2>nul"
 cmd /c "icacls C:\FTP /grant Administrators:(OI)(CI)F /T /Q >nul 2>nul"
 
 icacls $BASE /reset /T /C | Out-Null
-
 }
 
 Write-Host "Instalando IIS y FTP..." -ForegroundColor Cyan
-
 Install-WindowsFeature Web-Server,Web-FTP-Service,Web-FTP-Server,Web-Basic-Auth -IncludeAllSubFeature -ErrorAction SilentlyContinue | Out-Null
 
 Import-Module WebAdministration
@@ -38,7 +39,6 @@ New-Item "$BASE\Recursadores" -ItemType Directory -Force | Out-Null
 Write-Host "Configurando permisos base..." -ForegroundColor Cyan
 
 icacls $BASE /inheritance:r | Out-Null
-
 icacls $BASE /grant "Administrators:(OI)(CI)F" | Out-Null
 icacls $BASE /grant "SYSTEM:(OI)(CI)F" | Out-Null
 icacls $BASE /grant "IIS_IUSRS:(OI)(CI)RX" | Out-Null
@@ -46,9 +46,7 @@ icacls $BASE /grant "IIS_IUSRS:(OI)(CI)RX" | Out-Null
 icacls $PUBLIC /grant "IUSR:(OI)(CI)RX" | Out-Null
 
 if(!(Get-WebSite -Name FTP -ErrorAction SilentlyContinue)){
-
 New-WebFtpSite -Name "FTP" -Port 21 -PhysicalPath $BASE | Out-Null
-
 }
 
 Set-ItemProperty "IIS:\Sites\FTP" -Name ftpServer.security.authentication.basicAuthentication.enabled -Value $true
@@ -68,6 +66,9 @@ Restart-Service ftpsvc
 Write-Host "Servidor FTP listo." -ForegroundColor Green
 }
 
+#-------------------------------------------------------
+# CREAR GRUPOS
+#-------------------------------------------------------
 function Generar-GruposClase {
 
 $grupos=@("Reprobados","Recursadores")
@@ -77,7 +78,7 @@ foreach($g in $grupos){
 if(!(Get-LocalGroup -Name $g -ErrorAction SilentlyContinue)){
 
 New-LocalGroup $g | Out-Null
-Write-Host "Grupo $g creado"
+Write-Host "Grupo $g creado" -ForegroundColor Green
 
 }
 
@@ -85,6 +86,9 @@ Write-Host "Grupo $g creado"
 
 }
 
+#-------------------------------------------------------
+# CREAR USUARIO
+#-------------------------------------------------------
 function Alta-NuevoUsuario {
 
 do{
@@ -92,9 +96,7 @@ do{
 $usuario=Read-Host "Nombre del alumno"
 
 if(Get-LocalUser $usuario -ErrorAction SilentlyContinue){
-
 Write-Host "El usuario ya existe." -ForegroundColor Red
-
 }
 
 }while(Get-LocalUser $usuario -ErrorAction SilentlyContinue)
@@ -126,12 +128,11 @@ cmd /c mklink /D "$home\$grupo" "$BASE\$grupo" | Out-Null
 Write-Host "Aplicando permisos..." -ForegroundColor Yellow
 
 icacls $home /inheritance:r | Out-Null
-
-icacls $home /grant "$usuario:(OI)(CI)M" | Out-Null
+icacls $home /grant "${usuario}:(OI)(CI)M" | Out-Null
 icacls $home /grant "Administrators:(OI)(CI)F" | Out-Null
 icacls $home /grant "SYSTEM:(OI)(CI)F" | Out-Null
 
-icacls $LOCAL /grant "$usuario:(RX)" | Out-Null
+icacls $LOCAL /grant "${usuario}:(RX)" | Out-Null
 
 icacls "$BASE\Reprobados" /grant "Reprobados:(OI)(CI)M" | Out-Null
 icacls "$BASE\Recursadores" /grant "Recursadores:(OI)(CI)M" | Out-Null
@@ -142,15 +143,16 @@ Write-Host "Usuario creado correctamente." -ForegroundColor Green
 
 }
 
+#-------------------------------------------------------
+# CAMBIAR USUARIO DE GRUPO
+#-------------------------------------------------------
 function Mover-UsuarioDeGrupo {
 
 param([string]$usuario)
 
 if(!(Get-LocalUser $usuario -ErrorAction SilentlyContinue)){
-
 Write-Host "Usuario no existe." -ForegroundColor Red
 return
-
 }
 
 Write-Host "Nuevo grupo:"
@@ -165,20 +167,6 @@ $grupoDestino="Reprobados"
 $grupoDestino="Recursadores"
 }
 
-$grupoViejo=""
-
-if(Get-LocalGroupMember Reprobados -ErrorAction SilentlyContinue | Where {$_.Name -like "*$usuario"}){
-
-$grupoViejo="Reprobados"
-
-}
-
-if(Get-LocalGroupMember Recursadores -ErrorAction SilentlyContinue | Where {$_.Name -like "*$usuario"}){
-
-$grupoViejo="Recursadores"
-
-}
-
 Remove-LocalGroupMember Reprobados $usuario -ErrorAction SilentlyContinue
 Remove-LocalGroupMember Recursadores $usuario -ErrorAction SilentlyContinue
 
@@ -191,18 +179,15 @@ cmd /c rmdir "$home\Recursadores" 2>nul
 
 cmd /c mklink /D "$home\$grupoDestino" "$BASE\$grupoDestino" | Out-Null
 
-Write-Host "Limpiando permisos anteriores..." -ForegroundColor Yellow
-
-icacls "$BASE\Reprobados" /remove $usuario /T /C | Out-Null
-icacls "$BASE\Recursadores" /remove $usuario /T /C | Out-Null
-
 Restart-Service ftpsvc
 
 Write-Host "Usuario movido correctamente." -ForegroundColor Green
 
 }
 
-# MENU
+#-------------------------------------------------------
+# MENU PRINCIPAL
+#-------------------------------------------------------
 
 do{
 
@@ -221,26 +206,31 @@ $op=Read-Host "Seleccione"
 switch($op){
 
 "1"{
-
 Preparar-ServidorFTP
 Generar-GruposClase
 Pause
-
 }
 
 "2"{
 
 $n=Read-Host "Cantidad de usuarios"
 
-for($i=1;$i -le $n;$i++){
+if($n -as [int]){
+
+for($i=1;$i -le [int]$n;$i++){
 
 Write-Host "`nUsuario $i de $n"
 Alta-NuevoUsuario
 
 }
 
-Pause
+}else{
 
+Write-Host "Cantidad invalida" -ForegroundColor Red
+
+}
+
+Pause
 }
 
 "3"{
