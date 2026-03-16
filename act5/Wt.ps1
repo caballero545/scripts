@@ -1,4 +1,3 @@
-
 function Preparar-ServidorFTP {
     Write-Host "--- Iniciando configuración del Servidor FTP ---" -ForegroundColor Cyan
     
@@ -99,8 +98,8 @@ function Alta-NuevoUsuario {
     if (-not(Test-Path $rutaBase)) {
         New-Item -Path "$rutaBase\$global:NombreUserFTP" -ItemType Directory -Force | Out-Null
         # mklink crea el "puente" para el aislamiento
-        cmd /c mklink /D "$rutaBase\General" "C:\FTP\LocalUser\Public\General"
-        cmd /c mklink /D "$rutaBase\$global:AsignacionGrupo" "C:\FTP\$global:AsignacionGrupo"
+        cmd /c mklink /D "$rutaBase\General" "C:\FTP\LocalUser\Public\General" | Out-Null
+        cmd /c mklink /D "$rutaBase\$global:AsignacionGrupo" "C:\FTP\$global:AsignacionGrupo" | Out-Null
     }       
 }
 
@@ -115,7 +114,6 @@ function Aplicar-SeguridadNTFS {
     # 2. PERMISOS EN CARPETA GENERAL (TODOS MODIFICAN)
     # Otorgamos 'M' (Modify) a ambos grupos
     icacls "C:\FTP\LocalUser\Public\General" /grant "Usuarios:(OI)(CI)M" /Q | Out-Null
-    icacls "C:\FTP\LocalUser\Public\General" /grant "Usuarios:(OI)(CI)M" /Q | Out-Null
     
     # 3. PERMISO PARA "ATRAVESAR" LA CARPETA PUBLIC (Necesario para el Link)
     icacls "C:\FTP\LocalUser\Public" /grant "$($global:AsignacionGrupo):(RX)" /Q | Out-Null
@@ -126,20 +124,39 @@ function Aplicar-SeguridadNTFS {
 
 function Mover-UsuarioDeGrupo {
     param([string]$TargetUser)
+    
+    # 1. Verificamos que el usuario exista
     if (-not (Get-LocalUser -Name $TargetUser -ErrorAction SilentlyContinue)) {
         Write-Host "Usuario no encontrado." -ForegroundColor Red ; return
     }
 
-    $grupoOrigen = if (Get-LocalGroupMember "Reprobados" | ?{$_.Name -like "*$TargetUser"}) {"Reprobados"} else {"Recursadores"}
-    $grupoDestino = if ($grupoOrigen -eq "Reprobados") {"Recursadores"} else {"Reprobados"}
-
-    Remove-LocalGroupMember -Group $grupoOrigen -Member $TargetUser
-    Add-LocalGroupMember -Group $grupoDestino -Member $TargetUser
+    # 2. Preguntamos el nuevo destino directamente para evitar ambigüedades
+    Write-Host "`nSeleccione el NUEVO GRUPO para $TargetUser:"
+    Write-Host "1) Reprobados"
+    Write-Host "2) Recursadores"
+    $opDestino = Read-Host "Elija destino"
     
-    # Actualizar Link Simbólico
-    cmd /c rmdir "C:\FTP\LocalUser\$TargetUser\$grupoOrigen" 2>nul
-    cmd /c mklink /D "C:\FTP\LocalUser\$TargetUser\$grupoDestino" "C:\FTP\$grupoDestino"
-    Write-Host "$TargetUser movido a $grupoDestino con éxito." -ForegroundColor Green
+    $grupoDestino = if ($opDestino -eq "1") { "Reprobados" } elseif ($opDestino -eq "2") { "Recursadores" } else { Write-Host "Opción inválida." -ForegroundColor Red; return }
+
+    # 3. Lo quitamos de AMBOS grupos para evitar historiales fantasma
+    Remove-LocalGroupMember -Group "Reprobados" -Member $TargetUser -ErrorAction SilentlyContinue
+    Remove-LocalGroupMember -Group "Recursadores" -Member $TargetUser -ErrorAction SilentlyContinue
+    
+    # 4. Lo añadimos al nuevo grupo
+    Add-LocalGroupMember -Group $grupoDestino -Member $TargetUser -ErrorAction SilentlyContinue
+    
+    # 5. Borramos TODOS los links anteriores que pudieran existir
+    $baseUser = "C:\FTP\LocalUser\$TargetUser"
+    cmd /c rmdir "$baseUser\Reprobados" 2>nul
+    cmd /c rmdir "$baseUser\Recursadores" 2>nul
+    
+    # 6. Creamos el link nuevo
+    cmd /c mklink /D "$baseUser\$grupoDestino" "C:\FTP\$grupoDestino" | Out-Null
+    
+    # 7. EL TRUCO ESTRELLA: Reiniciamos el FTP para borrar la memoria caché de IIS
+    Restart-Service ftpsvc -ErrorAction SilentlyContinue
+    
+    Write-Host "`n¡Éxito! $TargetUser ha sido movido a $grupoDestino y los accesos viejos se borraron." -ForegroundColor Green
 }
 
 # ==========================================
@@ -148,105 +165,54 @@ function Mover-UsuarioDeGrupo {
 $global:ADSI = [ADSI]"WinNT://$env:ComputerName"
 
 do {
-
     Clear-Host
-
     Write-Host "=============================" -ForegroundColor Cyan
-
     Write-Host "   PANEL ADMINISTRATIVO FTP" -ForegroundColor Cyan
-
     Write-Host "============================="
-
     Write-Host "1) CONFIGURAR SERVIDOR (Instalacion)"
-
     Write-Host "2) ALTA MASIVA DE USUARIOS"
-
     Write-Host "3) CAMBIAR ALUMNO DE GRUPO"
-
     Write-Host "4) SALIR DEL SISTEMA"
-
     Write-Host "-----------------------------"
-
+    
     $seleccion = Read-Host "Elija el numero de la accion"
 
-
-
     switch ($seleccion) {
-
         "1" {
-
             Preparar-ServidorFTP
-
             Generar-GruposClase
-
             Set-ItemProperty "IIS:\Sites\FTP" -Name ftpServer.security.ssl.controlChannelPolicy -Value 0
-
             Set-ItemProperty "IIS:\Sites\FTP" -Name ftpServer.security.ssl.dataChannelPolicy -Value 0
-
             Restart-WebItem "IIS:\Sites\FTP"
-
             Write-Host "Proceso de instalacion finalizado." -ForegroundColor Green
-
             Pause
-
         }
-
         "2" {
-
-            # BUCLE FOR AÑADIDO PARA MULTIPLES USUARIOS
-
             $cantidadUsuarios = Read-Host "¿Cuantos usuarios desea crear en esta sesion?"
-
-           
-
+            
             if ($cantidadUsuarios -as [int] -and [int]$cantidadUsuarios -gt 0) {
-
                 for ($i = 1; $i -le [int]$cantidadUsuarios; $i++) {
-
                     Write-Host "`n--- Creando Alumno $i de $cantidadUsuarios ---" -ForegroundColor Yellow
-
                     Alta-NuevoUsuario
-
                     Aplicar-SeguridadNTFS
-
                     Write-Host "Usuario guardado." -ForegroundColor Green
-
                 }
-
             } else {
-
                 Write-Host "Cantidad no valida." -ForegroundColor Red
-
             }
-
             Pause
-
         }
-
         "3" {
-
             $nomAlumno = Read-Host "Ingrese el login del usuario a reubicar"
-
             Mover-UsuarioDeGrupo -TargetUser $nomAlumno
-
             Pause
-
         }
-
         "4" {
-
             Write-Host "Cerrando script..." -ForegroundColor Yellow
-
         }
-
         default {
-
             Write-Host "La opcion $seleccion no es valida." -ForegroundColor Red
-
             Pause
-
         }
-
     }
-
 } while ($seleccion -ne "4")
