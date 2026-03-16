@@ -60,7 +60,7 @@ function Preparar-ServidorFTP {
 }
 
 function Generar-GruposClase {
-    if (-null -eq $global:ADSI) { $global:ADSI = [ADSI]"WinNT://$env:ComputerName" }
+    if ($null -eq $global:ADSI) { $global:ADSI = [ADSI]"WinNT://$env:ComputerName" }
 
     $grupos = @("Reprobados", "Recursadores")
     foreach ($g in $grupos) {
@@ -131,7 +131,7 @@ function Mover-UsuarioDeGrupo {
     }
 
     # 2. Preguntamos el nuevo destino directamente para evitar ambigüedades
-    Write-Host "`nSeleccione el NUEVO GRUPO para $TargetUser:"
+    Write-Host "`nSeleccione el NUEVO GRUPO para ${TargetUser}:"
     Write-Host "1) Reprobados"
     Write-Host "2) Recursadores"
     $opDestino = Read-Host "Elija destino"
