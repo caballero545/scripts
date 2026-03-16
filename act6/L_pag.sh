@@ -3,8 +3,6 @@
 # MAIN SCRIPT: provisioner_linux.sh
 # ==========================================================
 
-# RUTA CORRECTA: El punto indica el directorio actual
-# No se usa sudo dentro del source, se corre el script con sudo
 FUNCTIONS_FILE="./Lhttp.sh"
 
 if [[ -f "$FUNCTIONS_FILE" ]]; then
@@ -14,20 +12,19 @@ else
     exit 1
 fi
 
-# Validación de privilegios
 if [[ $EUID -ne 0 ]]; then
    echo "CRÍTICO: Debes ejecutar este script con sudo." 
    exit 1
 fi
 
-# 1. Preparar el sistema una sola vez al inicio
+# 1. Preparar el sistema
 prepare_environment
 
 # 2. Menú Interactivo
 while true; do
     clear
     echo "=========================================================="
-    echo "     PROVISIONADOR HTTP AUTOMATIZADO (SSH MODE)"
+    echo "      PROVISIONADOR HTTP AUTOMATIZADO (SSH MODE)"
     echo "=========================================================="
     echo "1) Desplegar Apache2 (Dinamico)"
     echo "2) Desplegar Nginx (Dinamico)"
