@@ -2,7 +2,7 @@
 
 LOG="/tmp/http_provision.log"
 
-function log(){
+log(){
     echo -e "$1"
     echo "$(date '+%F %T') | $1" >> $LOG
 }
@@ -10,7 +10,7 @@ function log(){
 #------------------------------------------
 # ESPERAR APT
 #------------------------------------------
-function wait_for_apt(){
+wait_for_apt(){
     while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
         sleep 2
     done
@@ -19,7 +19,7 @@ function wait_for_apt(){
 #------------------------------------------
 # REPARAR SISTEMA
 #------------------------------------------
-function fix_system(){
+fix_system(){
     rm -f /var/lib/dpkg/lock-frontend
     dpkg --configure -a
     apt-get install -f -y
@@ -29,16 +29,11 @@ function fix_system(){
 #------------------------------------------
 # VALIDAR PUERTO
 #------------------------------------------
-function validate_port(){
+validate_port(){
     local P=$1
 
     [[ ! $P =~ ^[0-9]+$ ]] && return 1
     ((P<1 || P>65535)) && return 1
-
-    local RES=(21 22 25 53 3306 3389)
-    for r in "${RES[@]}"; do
-        [[ "$P" == "$r" ]] && return 1
-    done
 
     lsof -i :$P >/dev/null && return 1
 
@@ -48,7 +43,7 @@ function validate_port(){
 #------------------------------------------
 # PREPARAR ENTORNO
 #------------------------------------------
-function prepare_environment(){
+prepare_environment(){
     wait_for_apt
     fix_system
 
@@ -59,17 +54,16 @@ function prepare_environment(){
 }
 
 #------------------------------------------
-# CONSULTAR VERSIONES (CLAVE DE LA PRACTICA)
+# VERSIONES
 #------------------------------------------
-function get_versions(){
-    local SERVICE=$1
-    apt-cache madison $SERVICE | awk '{print $3}' | sort -u
+get_versions(){
+    apt-cache madison $1 | awk '{print $3}' | sort -u
 }
 
 #------------------------------------------
-# CREAR INDEX DINAMICO
+# INDEX
 #------------------------------------------
-function create_index(){
+create_index(){
     local NAME=$1
     local VERSION=$2
     local PORT=$3
@@ -90,9 +84,12 @@ EOF
 #------------------------------------------
 # HARDENING APACHE
 #------------------------------------------
-function harden_apache(){
+harden_apache(){
 
+grep -q "ServerTokens Prod" /etc/apache2/conf-enabled/security.conf || \
 sed -i "s/ServerTokens OS/ServerTokens Prod/" /etc/apache2/conf-enabled/security.conf
+
+grep -q "ServerSignature Off" /etc/apache2/conf-enabled/security.conf || \
 sed -i "s/ServerSignature On/ServerSignature Off/" /etc/apache2/conf-enabled/security.conf
 
 a2enmod headers >/dev/null
@@ -107,13 +104,14 @@ a2enconf seguridad >/dev/null
 }
 
 #------------------------------------------
-# HARDENING NGINX
+# HARDENING NGINX (FIX DUPLICADOS)
 #------------------------------------------
-function harden_nginx(){
+harden_nginx(){
 
 sed -i "s/# server_tokens off;/server_tokens off;/" /etc/nginx/nginx.conf
 
-cat >> /etc/nginx/nginx.conf <<EOF
+# evitar duplicados
+grep -q "X-Frame-Options" /etc/nginx/nginx.conf || cat >> /etc/nginx/nginx.conf <<EOF
 
 add_header X-Frame-Options SAMEORIGIN;
 add_header X-Content-Type-Options nosniff;
@@ -121,20 +119,34 @@ EOF
 }
 
 #------------------------------------------
-# LIMPIEZA CONTROLADA
+# LIMPIEZA SEGURA
 #------------------------------------------
-function clean_service(){
+clean_service(){
     local S=$1
 
     systemctl stop $S 2>/dev/null
-    apt-get purge -y ${S}* 2>/dev/null
-    apt-get autoremove -y
+    apt-get remove -y $S >/dev/null 2>&1
 }
 
 #------------------------------------------
-# DEPLOY DINAMICO (APACHE / NGINX)
+# VALIDAR SERVICIO (CLAVE)
 #------------------------------------------
-function deploy_service(){
+check_service(){
+    local S=$1
+
+    systemctl is-active --quiet $S
+    if [ $? -ne 0 ]; then
+        log "[ERROR] $S no inició correctamente"
+        return 1
+    fi
+
+    return 0
+}
+
+#------------------------------------------
+# DEPLOY
+#------------------------------------------
+deploy_service(){
 
 local SERVICE=$1
 
@@ -154,14 +166,15 @@ wait_for_apt
 fix_system
 clean_service $SERVICE
 
-log "[+] Instalando $SERVICE versión $VERSION"
+log "[+] Instalando $SERVICE..."
 
-if ! apt-get install -y ${SERVICE}=${VERSION} --allow-downgrades; then
-    log "[!] Error versión específica, usando estable..."
-    apt-get install -y $SERVICE || return 1
+# ⚠️ NO forzar versión si rompe dependencias
+if ! apt-get install -y $SERVICE; then
+    log "[CRITICO] fallo instalación"
+    return 1
 fi
 
-# CONFIGURACION
+# CONFIG
 if [[ "$SERVICE" == "apache2" ]]; then
 
 sed -i "s/Listen 80/Listen $PORT/" /etc/apache2/ports.conf
@@ -171,6 +184,7 @@ create_index "Apache" "$VERSION" "$PORT" "/var/www/html"
 harden_apache
 
 systemctl restart apache2
+check_service apache2 || return 1
 
 elif [[ "$SERVICE" == "nginx" ]]; then
 
@@ -180,18 +194,18 @@ create_index "Nginx" "$VERSION" "$PORT" "/var/www/html"
 harden_nginx
 
 systemctl restart nginx
+check_service nginx || return 1
 fi
 
-ufw deny 80/tcp >/dev/null
 ufw allow $PORT/tcp >/dev/null
 
-log "[OK] $SERVICE listo en puerto $PORT"
+log "[OK] $SERVICE funcionando en puerto $PORT"
 }
 
 #------------------------------------------
-# TOMCAT (USUARIO DEDICADO)
+# TOMCAT (FIX REAL)
 #------------------------------------------
-function deploy_tomcat(){
+deploy_tomcat(){
 
 read -p "Puerto: " PORT
 until validate_port $PORT; do
@@ -200,9 +214,7 @@ done
 
 fix_system
 
-if ! id tomcat &>/dev/null; then
-    useradd -m -U -d /opt/tomcat -s /bin/false tomcat
-fi
+useradd -m -U -d /opt/tomcat -s /bin/false tomcat 2>/dev/null
 
 VER="10.1.18"
 FILE="/tmp/tomcat.tar.gz"
@@ -221,8 +233,7 @@ sed -i "s/port=\"8080\"/port=\"$PORT\"/" /opt/tomcat/conf/server.xml
 
 create_index "Tomcat" "$VER" "$PORT" "/opt/tomcat/webapps/ROOT"
 
-ufw deny 8080/tcp >/dev/null
 ufw allow $PORT/tcp >/dev/null
 
-log "[OK] Tomcat listo puerto $PORT"
+log "[OK] Tomcat instalado (manual start: startup.sh)"
 }
