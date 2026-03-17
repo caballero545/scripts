@@ -239,7 +239,13 @@ useradd -m -U -d /opt/tomcat -s /bin/false tomcat 2>/dev/null
 VER="10.1.18"
 FILE="/tmp/tomcat.tar.gz"
 
-wget -q -O $FILE "https://archive.apache.org/dist/tomcat/tomcat-10/v$VER/bin/apache-tomcat-$VER.tar.gz"
+echo "[*] Descargando Tomcat..."
+wget -O $FILE "https://archive.apache.org/dist/tomcat/tomcat-10/v$VER/bin/apache-tomcat-$VER.tar.gz"
+
+if [ ! -s "$FILE" ]; then
+    log "[ERROR] Descarga fallida (sin internet o URL caída)"
+    return 1
+fi
 
 rm -rf /opt/tomcat
 mkdir -p /opt/tomcat
