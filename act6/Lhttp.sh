@@ -11,74 +11,93 @@ log(){
 # ESPERAR APT
 #------------------------------------------
 wait_for_apt(){
-    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 \
+       || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
         sleep 2
     done
 }
 
 #------------------------------------------
-# REPARAR SISTEMA
+# REPARAR SISTEMA (BLINDADO)
 #------------------------------------------
 fix_system(){
-    rm -f /var/lib/dpkg/lock-frontend
-    dpkg --configure -a
-    apt-get install -f -y
-    apt-get update -y
+
+log "[*] Reparando sistema..."
+
+rm -f /var/lib/dpkg/lock-frontend
+rm -f /var/lib/dpkg/lock
+rm -f /var/cache/apt/archives/lock
+
+dpkg --configure -a || true
+apt-get install -f -y || true
+apt-get clean
+apt-get autoclean
+apt-get update -y
+
+log "[OK] Sistema listo"
 }
 
 #------------------------------------------
 # VALIDAR PUERTO
 #------------------------------------------
 validate_port(){
-    local P=$1
 
-    [[ ! $P =~ ^[0-9]+$ ]] && return 1
-    ((P<1 || P>65535)) && return 1
+local P=$1
 
-    lsof -i :$P >/dev/null && return 1
+[[ ! $P =~ ^[0-9]+$ ]] && return 1
+((P<1 || P>65535)) && return 1
 
-    return 0
+# puertos reservados
+case $P in
+    21|22|25|53|3306|3389) return 1 ;;
+esac
+
+lsof -i :$P >/dev/null 2>&1 && return 1
+
+return 0
 }
 
 #------------------------------------------
 # PREPARAR ENTORNO
 #------------------------------------------
 prepare_environment(){
-    wait_for_apt
-    fix_system
 
-    apt-get install -y lsof curl ufw gawk sed apache2-utils
+wait_for_apt
+fix_system
 
-    ufw allow 22/tcp >/dev/null
-    echo "y" | ufw enable >/dev/null
+apt-get install -y lsof curl ufw gawk sed apache2-utils
+
+ufw allow 22/tcp >/dev/null
+echo "y" | ufw enable >/dev/null
 }
 
 #------------------------------------------
-# VERSIONES
+# VERSIONES (DINAMICO)
 #------------------------------------------
 get_versions(){
     apt-cache madison $1 | awk '{print $3}' | sort -u
 }
 
 #------------------------------------------
-# INDEX
+# INDEX DINAMICO
 #------------------------------------------
 create_index(){
-    local NAME=$1
-    local VERSION=$2
-    local PORT=$3
-    local ROOT=$4
 
-    mkdir -p $ROOT
+local NAME=$1
+local VERSION=$2
+local PORT=$3
+local ROOT=$4
 
-    cat > $ROOT/index.html <<EOF
+mkdir -p $ROOT
+
+cat > $ROOT/index.html <<EOF
 <h1>Servidor: $NAME</h1>
 <p>Version: $VERSION</p>
 <p>Puerto: $PORT</p>
 EOF
 
-    chown -R www-data:www-data $ROOT
-    chmod -R 750 $ROOT
+chown -R www-data:www-data $ROOT
+chmod -R 750 $ROOT
 }
 
 #------------------------------------------
@@ -104,13 +123,12 @@ a2enconf seguridad >/dev/null
 }
 
 #------------------------------------------
-# HARDENING NGINX (FIX DUPLICADOS)
+# HARDENING NGINX
 #------------------------------------------
 harden_nginx(){
 
 sed -i "s/# server_tokens off;/server_tokens off;/" /etc/nginx/nginx.conf
 
-# evitar duplicados
 grep -q "X-Frame-Options" /etc/nginx/nginx.conf || cat >> /etc/nginx/nginx.conf <<EOF
 
 add_header X-Frame-Options SAMEORIGIN;
@@ -122,29 +140,32 @@ EOF
 # LIMPIEZA SEGURA
 #------------------------------------------
 clean_service(){
-    local S=$1
 
-    systemctl stop $S 2>/dev/null
-    apt-get remove -y $S >/dev/null 2>&1
+local S=$1
+
+systemctl stop $S 2>/dev/null
+apt-get remove -y $S >/dev/null 2>&1
 }
 
 #------------------------------------------
-# VALIDAR SERVICIO (CLAVE)
+# VALIDAR SERVICIO
 #------------------------------------------
 check_service(){
-    local S=$1
 
-    systemctl is-active --quiet $S
-    if [ $? -ne 0 ]; then
-        log "[ERROR] $S no inició correctamente"
-        return 1
-    fi
+local S=$1
 
-    return 0
+systemctl is-active --quiet $S
+
+if [ $? -ne 0 ]; then
+    log "[ERROR] $S no inició correctamente"
+    return 1
+fi
+
+return 0
 }
 
 #------------------------------------------
-# DEPLOY
+# DEPLOY APACHE / NGINX
 #------------------------------------------
 deploy_service(){
 
@@ -168,13 +189,11 @@ clean_service $SERVICE
 
 log "[+] Instalando $SERVICE..."
 
-# ⚠️ NO forzar versión si rompe dependencias
 if ! apt-get install -y $SERVICE; then
     log "[CRITICO] fallo instalación"
     return 1
 fi
 
-# CONFIG
 if [[ "$SERVICE" == "apache2" ]]; then
 
 sed -i "s/Listen 80/Listen $PORT/" /etc/apache2/ports.conf
@@ -203,7 +222,7 @@ log "[OK] $SERVICE funcionando en puerto $PORT"
 }
 
 #------------------------------------------
-# TOMCAT (FIX REAL)
+# TOMCAT
 #------------------------------------------
 deploy_tomcat(){
 
@@ -212,6 +231,7 @@ until validate_port $PORT; do
     read -p "Otro puerto: " PORT
 done
 
+wait_for_apt
 fix_system
 
 useradd -m -U -d /opt/tomcat -s /bin/false tomcat 2>/dev/null
@@ -235,5 +255,5 @@ create_index "Tomcat" "$VER" "$PORT" "/opt/tomcat/webapps/ROOT"
 
 ufw allow $PORT/tcp >/dev/null
 
-log "[OK] Tomcat instalado (manual start: startup.sh)"
+log "[OK] Tomcat instalado (arranque manual: /opt/tomcat/bin/startup.sh)"
 }
