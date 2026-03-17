@@ -3,14 +3,17 @@
 # MODULE: Lhttp.sh - Provision y Hardening Ultra-Robusto
 # ==========================================================
 
-function prepare_environment() {
-    echo "[*] Verificando disponibilidad del gestor de paquetes..."
-    
-    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 ; do
-        echo "[-] El sistema esta ocupado. Reintentando en 5s..."
+function wait_for_apt() {
+    echo "[*] Verificando que el gestor de paquetes este libre..."
+    # Ciclo de espera mas agresivo para evitar el error de "lock-frontend"
+    while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+        echo "[-] Sistema ocupado por actualizaciones automaticas. Reintentando en 5s..."
         sleep 5
     done
+}
 
+function prepare_environment() {
+    wait_for_apt
     echo "[+] Limpiando cache y actualizando repositorios..."
     sudo apt-get clean
     sudo apt-get update -y
@@ -62,9 +65,12 @@ function create_custom_index() {
 </html>
 EOF"
     
-    # Rúbrica: Permisos limitados al directorio y bloqueo al resto del sistema
-    sudo chown -R www-data:www-data "$ROOT_DIR"
-    # 750 = Dueño lee/escribe/ejecuta, Grupo lee/ejecuta, Otros NO tienen acceso
+    # Rúbrica: Permisos 750 (Dueño todo, Grupo lectura, Otros nada)
+    if [[ "$SERVICE" == *"Tomcat"* ]]; then
+        sudo chown -R tomcat:tomcat "$ROOT_DIR"
+    else
+        sudo chown -R www-data:www-data "$ROOT_DIR"
+    fi
     sudo chmod -R 750 "$ROOT_DIR"
 }
 
@@ -74,7 +80,7 @@ function deploy_service() {
     mapfile -t VERSIONS < <(get_versions "$SERVICE")
     
     if [ ${#VERSIONS[@]} -eq 0 ]; then
-        echo "[!] No se encontraron versiones en los repositorios."
+        echo "[!] No se encontraron versiones."
         read -p "Presione Enter..."
         return 1
     fi
@@ -84,17 +90,18 @@ function deploy_service() {
         [[ -n "$VERSION" ]] && break
     done
 
-    read -p "Puerto (ej. 8080): " PUERTO
+    read -p "Puerto: " PUERTO
     until validate_port "$PUERTO"; do
         read -p "Elija otro puerto: " PUERTO
     done
 
-    echo "[+] Intentando instalar $SERVICE=$VERSION..."
+    wait_for_apt
+    echo "[+] Instalando $SERVICE=$VERSION..."
     if ! sudo apt-get install -y --allow-downgrades "${SERVICE}=${VERSION}"; then
-        echo "[!] Fallo la version especifica. Intentando instalar version por defecto..."
+        echo "[!] Fallo la instalacion. Intentando reparar..."
         sudo apt-get install -y -f
         if ! sudo apt-get install -y "$SERVICE"; then
-            echo "CRITICO: No se pudo instalar $SERVICE de ninguna forma."
+            echo "CRITICO: Fallo total de instalacion."
             read -p "Presione Enter..."
             return 1
         fi
@@ -102,15 +109,10 @@ function deploy_service() {
 
     # --- CONFIGURACION Y HARDENING ---
     if [[ "$SERVICE" == "apache2" ]]; then
-        # Cambio de puerto
         sudo sed -i "s/Listen 80/Listen $PUERTO/g" /etc/apache2/ports.conf
         sudo sed -i "s/<VirtualHost \*:80>/<VirtualHost \*:$PUERTO>/g" /etc/apache2/sites-available/000-default.conf
-        
-        # Ocultar version
         sudo sed -i "s/ServerTokens OS/ServerTokens Prod/" /etc/apache2/conf-enabled/security.conf
         sudo sed -i "s/ServerSignature On/ServerSignature Off/" /etc/apache2/conf-enabled/security.conf
-        
-        # Activar modulos y configurar Security Headers + Limite de Metodos
         sudo a2enmod headers > /dev/null
         sudo bash -c "cat <<EOF > /etc/apache2/conf-available/hardening.conf
 Header set X-Frame-Options 'SAMEORIGIN'
@@ -126,64 +128,59 @@ EOF"
         sudo systemctl restart apache2
 
     elif [[ "$SERVICE" == "nginx" ]]; then
-        # Cambio de puerto
         [[ -f /etc/nginx/sites-available/default ]] && sudo sed -i "s/listen 80/listen $PUERTO/g" /etc/nginx/sites-available/default
-        
-        # Ocultar version
         sudo sed -i "s/# server_tokens off;/server_tokens off;/g" /etc/nginx/nginx.conf
-        
-        # Security headers
         sudo sed -i "/http {/a \    add_header X-Frame-Options SAMEORIGIN;\n    add_header X-Content-Type-Options nosniff;" /etc/nginx/nginx.conf
-        
-        # Limite de Metodos (Rechazar todo lo que no sea GET o POST)
-        sudo sed -i "/server_name _;/a \    if (\$request_method !~ ^(GET|POST)$ ) {\n        return 405;\n    }" /etc/nginx/sites-available/default
-
+        # Bloqueo de metodos en Nginx
+        sudo sed -i "/server_name _;/a \    if (\$request_method !~ ^(GET|POST)$ ) { return 405; }" /etc/nginx/sites-available/default
         create_custom_index "Nginx" "$VERSION" "$PUERTO" "/var/www/html"
         sudo systemctl restart nginx
     fi
 
-    # Rúbrica: Cierre de puertos por defecto y apertura del seleccionado
-    if [ "$PUERTO" != "80" ]; then
-        sudo ufw deny 80/tcp > /dev/null
-    fi
+    if [ "$PUERTO" != "80" ]; then sudo ufw deny 80/tcp > /dev/null; fi
     sudo ufw allow "$PUERTO/tcp" > /dev/null
-    
-    echo -e "\n[OK] $SERVICE funcionando de forma segura en puerto $PUERTO."
+    echo -e "\n[OK] $SERVICE en puerto $PUERTO con Hardening aplicado."
     read -p "Presione Enter..."
 }
 
 function deploy_tomcat() {
     echo "[*] Instalando Tomcat de forma segura..."
     read -p "Puerto: " PUERTO
-    until validate_port "$PUERTO"; do read -p "Puerto: " PUERTO; done
+    until validate_port "$PUERTO"; do read -p "Puerto ocupado: " PUERTO; done
     
-    # Usuario dedicado y sin shell activa (Seguridad)
     if ! id "tomcat" &>/dev/null; then
         sudo useradd -m -U -d /opt/tomcat -s /bin/false tomcat
     fi
 
     local T_VER="10.1.18"
-    sudo wget -q "https://archive.apache.org/dist/tomcat/tomcat-10/v${T_VER}/bin/apache-tomcat-${T_VER}.tar.gz" -P /tmp
-    sudo tar -xf "/tmp/apache-tomcat-${T_VER}.tar.gz" -C /opt/tomcat --strip-components=1
+    local T_FILE="/tmp/apache-tomcat-${T_VER}.tar.gz"
     
-    # Rúbrica: Permisos restrictivos (750)
+    # Descarga con verificacion de integridad
+    echo "[+] Descargando binarios de Tomcat..."
+    sudo wget -c -q "https://archive.apache.org/dist/tomcat/tomcat-10/v${T_VER}/bin/apache-tomcat-${T_VER}.tar.gz" -O "$T_FILE"
+    
+    if [ ! -s "$T_FILE" ]; then
+        echo "[!] Error: Descarga fallida o archivo vacio."
+        return 1
+    fi
+
+    sudo mkdir -p /opt/tomcat
+    if ! sudo tar -xf "$T_FILE" -C /opt/tomcat --strip-components=1; then
+        echo "[!] Error: El archivo descargado esta corrupto. Borrando..."
+        sudo rm -f "$T_FILE"
+        return 1
+    fi
+
     sudo chown -R tomcat:tomcat /opt/tomcat
     sudo chmod -R 750 /opt/tomcat
-    
-    # Cambio de puerto
     sudo sed -i "s/Connector port=\"8080\"/Connector port=\"$PUERTO\"/g" /opt/tomcat/conf/server.xml
-    
-    # Hardening basico en Tomcat (Remover Server Header)
-    sudo sed -i 's/<Connector port="'$PUERTO'"/<Connector port="'$PUERTO'" server="Apache Tomcat"/g' /opt/tomcat/conf/server.xml
+    # Hardening: Ocultar version en el header Server
+    sudo sed -i "s/<Connector port=\"$PUERTO\"/<Connector port=\"$PUERTO\" server=\"Apache\"/g" /opt/tomcat/conf/server.xml
 
     create_custom_index "Apache Tomcat" "$T_VER" "$PUERTO" "/opt/tomcat/webapps/ROOT"
     
-    # Firewall
-    if [ "$PUERTO" != "8080" ]; then
-        sudo ufw deny 8080/tcp > /dev/null
-    fi
+    if [ "$PUERTO" != "8080" ]; then sudo ufw deny 8080/tcp > /dev/null; fi
     sudo ufw allow "$PUERTO/tcp" > /dev/null
-    
     echo "[OK] Tomcat listo y asegurado."
     read -p "Presione Enter..."
 }
