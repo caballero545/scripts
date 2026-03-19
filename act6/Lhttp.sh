@@ -561,9 +561,7 @@ deploy_service() {
         if ask_reinstall "$SERVICE" "$VER_EXISTENTE"; then
             purge_service "$SERVICE"
         else
-            log_inf "Instalacion cancelada."
-            sleep 1
-            return 0
+            log_inf "Omitiendo purge. Continuando con la configuracion..."
         fi
     fi
 
@@ -626,9 +624,7 @@ deploy_tomcat() {
         if ask_reinstall "tomcat" "$VER_EXISTENTE"; then
             purge_service "tomcat"
         else
-            log_inf "Instalacion cancelada."
-            sleep 1
-            return 0
+            log_inf "Omitiendo purge. Continuando con la configuracion..."
         fi
     fi
 
