@@ -7,63 +7,45 @@
 
 FUNCTIONS_FILE="$(dirname "$0")/Lhttp.sh"
 
-# ── Cargar funciones ────────────────────────────────────────
-if [[ -f "$FUNCTIONS_FILE" ]]; then
-    # shellcheck source=./Lhttp.sh
-    source "$FUNCTIONS_FILE"
-else
-    echo "[ERROR] No se encontró el archivo de funciones: $FUNCTIONS_FILE"
-    echo "        Asegúrate de que Lhttp.sh esté en el mismo directorio."
+if [[ ! -f "$FUNCTIONS_FILE" ]]; then
+    echo "[ERROR] No se encontro: $FUNCTIONS_FILE"
+    echo "        Pon Lhttp.sh en el mismo directorio que este script."
     exit 1
 fi
 
-# ── Verificar privilegios root ──────────────────────────────
+source "$FUNCTIONS_FILE"
+
 if [[ $EUID -ne 0 ]]; then
-    echo "[ERROR] Debes ejecutar este script como root (sudo)."
+    echo "[ERROR] Ejecuta como root: sudo bash provisioner_linux.sh"
     exit 1
 fi
 
-# ── Preparar entorno (limpiar puertos, reparar APT) ─────────
+# Preparar entorno (limpia APT, UFW, puertos web)
 prepare_environment
 
-# ── Menú principal ──────────────────────────────────────────
 while true; do
     clear
     echo ""
-    echo "  ╔═══════════════════════════════════════════════════════╗"
-    echo "  ║        PROVISIONADOR HTTP AUTOMATIZADO - SSH          ║"
-    echo "  ║              Ubuntu Server | Bash v$(bash --version | head -1 | awk '{print $4}')              ║"
-    echo "  ╠═══════════════════════════════════════════════════════╣"
-    echo "  ║                                                       ║"
-    echo "  ║   1)  Desplegar Apache2   (versión dinámica via APT)  ║"
-    echo "  ║   2)  Desplegar Nginx     (versión dinámica via APT)  ║"
-    echo "  ║   3)  Desplegar Tomcat    (descarga desde Apache.org) ║"
-    echo "  ║   4)  Salir                                           ║"
-    echo "  ║                                                       ║"
-    echo "  ╚═══════════════════════════════════════════════════════╝"
+    echo "  PROVISIONADOR HTTP AUTOMATIZADO - SSH"
+    echo "  Ubuntu Server | Bash $(bash --version | head -1 | awk '{print $4}')"
+    echo ""
+    echo "  1) Desplegar Apache2   (versiones dinamicas via APT)"
+    echo "  2) Desplegar Nginx     (versiones dinamicas via APT)"
+    echo "  3) Desplegar Tomcat    (descarga desde archive.apache.org)"
+    echo "  4) Salir"
     echo ""
 
-    read -rp "  Seleccione una opción [1-4]: " OPT
-
-    # Validar: solo dígitos, sin espacios ni caracteres raros
+    read -rp "  Opcion [1-4]: " OPT
     OPT="${OPT//[^0-9]/}"
 
     case "$OPT" in
         1) deploy_service "apache2" ;;
         2) deploy_service "nginx"   ;;
         3) deploy_tomcat            ;;
-        4)
-            echo ""
-            echo "  Cerrando sesión de aprovisionamiento."
-            echo ""
-            exit 0
-            ;;
-        *)
-            echo "  Opción inválida. Intenta de nuevo."
-            sleep 1
-            ;;
+        4) echo ""; echo "  Hasta luego."; echo ""; exit 0 ;;
+        *) echo "  Opcion invalida."; sleep 1 ;;
     esac
 
     echo ""
-    read -rp "  Presiona Enter para volver al menú..." _PAUSE
+    read -rp "  Presiona Enter para continuar..." _
 done
