@@ -237,16 +237,27 @@ harden_apache() {
     a2enmod headers >/dev/null 2>&1
 
     cat > /etc/apache2/conf-available/seguridad.conf <<'EOF'
+# Ocultar version del servidor
+ServerTokens Prod
+ServerSignature Off
+
+# Headers de seguridad
 <IfModule mod_headers.c>
     Header always set X-Frame-Options "SAMEORIGIN"
     Header always set X-Content-Type-Options "nosniff"
     Header unset Server
     Header always unset X-Powered-By
 </IfModule>
+
+# Deshabilitar TRACE
 TraceEnable Off
-<LimitExcept GET POST HEAD>
-    Require all denied
-</LimitExcept>
+
+# Bloquear metodos peligrosos en el directorio raiz
+<Directory />
+    <LimitExcept GET POST HEAD>
+        Require all denied
+    </LimitExcept>
+</Directory>
 EOF
 
     a2enconf seguridad >/dev/null 2>&1
