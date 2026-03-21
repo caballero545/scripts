@@ -212,7 +212,7 @@ function Select-Version {
     }
 
     Write-Host ""
-    Write-Host "  Versiones disponibles para $Package:"
+    Write-Host "  Versiones disponibles para ${Package}:"
 
     for ($i = 0; $i -lt $versions.Count; $i++) {
         $label = ""
@@ -422,7 +422,7 @@ function Get-ExistingInstall {
             $f = Get-WindowsFeature -Name Web-Server -ErrorAction SilentlyContinue
             if ($f -and $f.Installed) {
                 $ver = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\InetStp" -ErrorAction SilentlyContinue).VersionString
-                return "IIS $($ver ?? 'instalado')"
+                if ($ver) { return "IIS $ver" } else { return "IIS instalado" }
             }
         }
         "apache" {
