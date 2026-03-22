@@ -35,24 +35,110 @@ function Assert-Admin {
 function Initialize-Chocolatey {
     Write-LogInf "Verificando Chocolatey..."
 
-    if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-        Write-LogInf "Instalando Chocolatey..."
-        try {
-            Set-ExecutionPolicy Bypass -Scope Process -Force
-            [System.Net.ServicePointManager]::SecurityProtocol = `
-                [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-            Invoke-Expression ((New-Object System.Net.WebClient).DownloadString(
-                'https://community.chocolatey.org/install.ps1'))
-            # Recargar PATH para que choco este disponible en esta sesion
-            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" +
-                        [System.Environment]::GetEnvironmentVariable("Path","User")
-            Write-LogOK "Chocolatey instalado"
-        } catch {
-            Write-LogErr "Fallo al instalar Chocolatey: $_"
+    # Recargar PATH antes de buscar choco
+    # (por si ya estaba instalado pero esta sesion no lo tiene en PATH)
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" +
+                [System.Environment]::GetEnvironmentVariable("Path","User")
+
+    # Si choco ya funciona, no hacer nada
+    if (Get-Command choco -ErrorAction SilentlyContinue) {
+        Write-LogOK "Chocolatey disponible: $(choco --version 2>&1 | Select-Object -First 1)"
+        return
+    }
+
+    # Detectar residuos de instalacion incompleta (causa del ciclo)
+    Write-LogInf "choco no encontrado. Revisando residuos de instalaciones anteriores..."
+
+    $chocoInstallDir = "C:\ProgramData\chocolatey"
+    $chocoTempDirs   = @(
+        "$env:TEMP\chocolatey",
+        "$env:LOCALAPPDATA\Temp\chocolatey",
+        "C:\Users\Administrator\AppData\Local\Temp\chocolatey"
+    )
+
+    $tieneResiduo = $false
+
+    # Caso 1: directorio choco existe pero el binario no funciona = instalacion corrupta
+    if (Test-Path "$chocoInstallDir\choco.exe") {
+        $testOut = & "$chocoInstallDir\choco.exe" --version 2>&1
+        if ($LASTEXITCODE -ne 0 -or ($testOut -notmatch '^\d')) {
+            Write-LogWar "Instalacion corrupta de Chocolatey detectada en $chocoInstallDir"
+            $tieneResiduo = $true
+        }
+    }
+
+    # Caso 2: carpetas temporales del instalador de ciclos previos
+    foreach ($d in $chocoTempDirs) {
+        if (Test-Path $d) {
+            Write-LogWar "Residuo temporal encontrado: $d"
+            $tieneResiduo = $true
+        }
+    }
+
+    if ($tieneResiduo) {
+        Write-LogInf "Limpiando residuos antes de instalar..."
+
+        foreach ($d in $chocoTempDirs) {
+            Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        # Si el directorio principal esta corrupto, borrarlo
+        if (Test-Path "$chocoInstallDir\choco.exe") {
+            $testOut = & "$chocoInstallDir\choco.exe" --version 2>&1
+            if ($LASTEXITCODE -ne 0 -or ($testOut -notmatch '^\d')) {
+                Remove-Item $chocoInstallDir -Recurse -Force -ErrorAction SilentlyContinue
+                [Environment]::SetEnvironmentVariable("ChocolateyInstall", $null, "Machine")
+                [Environment]::SetEnvironmentVariable("ChocolateyInstall", $null, "User")
+            }
+        }
+
+        Write-LogOK "Residuos limpiados"
+    } else {
+        Write-LogInf "Sin residuos. Procediendo con instalacion limpia..."
+    }
+
+    # Instalar Chocolatey descargando el script a archivo (evita el ciclo del iex directo)
+    Write-LogInf "Instalando Chocolatey..."
+    try {
+        Set-ExecutionPolicy Bypass -Scope Process -Force
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
+        $installerPath = "$env:TEMP\choco_install_once.ps1"
+        Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+
+        $wc = New-Object System.Net.WebClient
+        $wc.DownloadFile('https://community.chocolatey.org/install.ps1', $installerPath)
+
+        if (-not (Test-Path $installerPath) -or (Get-Item $installerPath).Length -lt 1000) {
+            Write-LogErr "No se pudo descargar el instalador. Verifica conexion a internet."
             exit 1
         }
-    } else {
-        Write-LogOK "Chocolatey disponible: $(choco --version)"
+
+        # Ejecutar el instalador una sola vez como proceso separado
+        $proc = Start-Process powershell.exe `
+            -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$installerPath`"" `
+            -Wait -PassThru -NoNewWindow
+        Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+
+        if ($proc.ExitCode -ne 0) {
+            Write-LogErr "El instalador de Chocolatey termino con error (ExitCode: $($proc.ExitCode))"
+            exit 1
+        }
+
+        # Recargar PATH
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" +
+                    [System.Environment]::GetEnvironmentVariable("Path","User")
+
+        if (Get-Command choco -ErrorAction SilentlyContinue) {
+            Write-LogOK "Chocolatey instalado: $(choco --version 2>&1 | Select-Object -First 1)"
+        } else {
+            Write-LogErr "Chocolatey no quedo en PATH. Abre una nueva ventana de PowerShell y reintenta."
+            exit 1
+        }
+
+    } catch {
+        Write-LogErr "Error instalando Chocolatey: $_"
+        exit 1
     }
 }
 
