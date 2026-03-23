@@ -785,6 +785,71 @@ function Deploy-IIS {
     }
 }
 
+
+# --------------------------------------------------------------
+# INSTALAR PAQUETE CHOCO CON LIMPIEZA DE RESIDUOS Y VERIFICACION
+# Evita el "queda esperando y regresa sin error" de choco install
+# --------------------------------------------------------------
+function Install-ChocoPackage {
+    param(
+        [string]$Package,
+        [string]$Version = "latest"
+    )
+
+    Write-LogInf "Preparando instalacion de $Package..."
+
+    # Limpiar residuos de instalaciones anteriores de este paquete
+    $pkgLibDir  = "C:\ProgramData\chocolatey\lib\$Package"
+    $pkgBadDir  = "C:\ProgramData\chocolatey\lib-bad\$Package"
+    $pkgTmpDir  = "C:\ProgramData\chocolatey\lib-bkp\$Package"
+
+    foreach ($d in @($pkgBadDir, $pkgTmpDir)) {
+        if (Test-Path $d) {
+            Write-LogWar "Residuo choco encontrado: $d  -> eliminando"
+            Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # Si hay un lib dir pero el paquete no funciona, borrarlo
+    if (Test-Path $pkgLibDir) {
+        $verFile = "$pkgLibDir\$Package.nuspec"
+        if (-not (Test-Path $verFile)) {
+            Write-LogWar "Directorio de paquete incompleto: $pkgLibDir -> eliminando"
+            Remove-Item $pkgLibDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # Armar argumentos
+    $chocoArgs = @("install", $Package, "--force", "-y", "--no-progress")
+    if ($Version -ne "latest") {
+        $chocoArgs += "--version=$Version"
+    }
+
+    Write-LogInf "Ejecutando: choco $($chocoArgs -join ' ')"
+
+    # Ejecutar choco y capturar salida completa (visible + guardada en log)
+    $output = & choco @chocoArgs 2>&1
+    $exitCode = $LASTEXITCODE
+
+    # Mostrar TODA la salida para que se vea en pantalla
+    $output | ForEach-Object { Write-Host $_ }
+
+    # Guardar en log
+    $output | ForEach-Object { Add-Content -Path $LOG -Value $_ -Encoding UTF8 -ErrorAction SilentlyContinue }
+
+    if ($exitCode -ne 0) {
+        Write-LogErr "choco install $Package fallo con ExitCode $exitCode"
+        Write-LogErr "Revisa el log completo en: $LOG"
+        return $false
+    }
+
+    # Recargar PATH para que el binario recien instalado sea visible
+    Refresh-EnvPath
+
+    Write-LogOK "$Package instalado correctamente via Chocolatey"
+    return $true
+}
+
 # ==============================================================
 # DEPLOY APACHE WINDOWS  (opcion adicional via Chocolatey)
 # ==============================================================
@@ -792,7 +857,7 @@ function Deploy-ApacheWin {
     Write-Host ""
     Write-Log "=== DESPLIEGUE DE APACHE (WINDOWS) ==="
 
-    # 1. Verificar existente
+    # 1. Verificar instalacion existente
     $verExistente = Get-ExistingInstall "apache"
     if ($verExistente) {
         if (Confirm-Reinstall "Apache" $verExistente) {
@@ -802,80 +867,132 @@ function Deploy-ApacheWin {
         }
     }
 
-    # 2. Version dinamica
-    $version  = Select-Version "apache-httpd"
-    $chocoVer = if ($version -ne "latest") { "--version=$version" } else { "" }
+    # 2. Version dinamica via Chocolatey
+    $version = Select-Version "apache-httpd"
 
     # 3. Puerto
     $port = Read-Port "Puerto de escucha para Apache"
 
-    # 4. Instalar via Chocolatey
+    # 4. Instalar con funcion robusta (muestra errores, verifica exit code)
     Write-LogInf "Instalando Apache via Chocolatey..."
-    if ($chocoVer) {
-        choco install apache-httpd $chocoVer --force -y 2>&1 | Select-Object -Last 10
-    } else {
-        choco install apache-httpd --force -y 2>&1 | Select-Object -Last 10
-    }
-    Refresh-EnvPath
-
-    $apacheBase = Find-ApacheBase
-    if (-not $apacheBase) {
-        Write-LogErr "Apache no encontrado tras la instalacion. Revisa la salida de Chocolatey."
+    $ok = Install-ChocoPackage -Package "apache-httpd" -Version $version
+    if (-not $ok) {
+        Write-LogErr "Instalacion de Apache fallo. Abortando."
+        Write-LogErr "Puedes intentar manualmente: choco install apache-httpd --force -y"
+        Read-Host "  Presiona Enter para volver al menu"
         return
     }
-    Write-LogOK "Apache en: $apacheBase"
 
-    # Version real
-    $verReal = (& "$apacheBase\bin\httpd.exe" -v 2>&1 |
-                Select-String "Server version" |
-                ForEach-Object { ($_ -split '/')[1] -split '\s' | Select-Object -First 1 })
+    # 5. Localizar directorio de Apache
+    $apacheBase = Find-ApacheBase
+    if (-not $apacheBase) {
+        Write-LogErr "Apache instalado pero no encontrado en rutas conocidas."
+        Write-LogErr "Rutas buscadas: C:\Apache24, C:\tools\Apache24"
+        Write-LogErr "Revisa: $LOG"
+        Read-Host "  Presiona Enter para volver al menu"
+        return
+    }
+    Write-LogOK "Apache encontrado en: $apacheBase"
+
+    # 6. Version real del binario
+    $verReal = ""
+    try {
+        $verOut = & "$apacheBase\bin\httpd.exe" -v 2>&1
+        $verLine = $verOut | Select-String "Server version"
+        if ($verLine) {
+            $verReal = ($verLine -split '/')[1] -split '\s' | Select-Object -First 1
+        }
+    } catch { }
     if (-not $verReal) { $verReal = $version }
+    Write-LogOK "Version Apache: $verReal"
 
-    # 5. Configurar puerto en httpd.conf
+    # 7. Configurar puerto en httpd.conf
     Write-LogInf "Configurando Apache en puerto $port..."
     $httpdConf = "$apacheBase\conf\httpd.conf"
-    $c = Get-Content $httpdConf -Raw
-    if ($c -match 'Listen\s+\d+') { $c = $c -replace 'Listen\s+\d+', "Listen $port" }
-    else                          { $c += "`nListen $port" }
-    Set-Content -Path $httpdConf -Value $c -Encoding UTF8
 
-    # 6. DocumentRoot y permisos NTFS
+    if (-not (Test-Path $httpdConf)) {
+        Write-LogErr "httpd.conf no encontrado en $apacheBase\conf"
+        Read-Host "  Presiona Enter para volver al menu"
+        return
+    }
+
+    $c = Get-Content $httpdConf -Raw
+
+    # Reemplazar Listen
+    if ($c -match 'Listen\s+\d+') {
+        $c = $c -replace 'Listen\s+\d+', "Listen $port"
+    } else {
+        $c += "`nListen $port"
+    }
+
+    # Ajustar ServerRoot a ruta real de instalacion
+    $apacheBaseEscaped = $apacheBase -replace '\\', '/'
+    if ($c -match 'ServerRoot\s+"[^"]+"') {
+        $c = $c -replace 'ServerRoot\s+"[^"]+"', "ServerRoot `"$apacheBaseEscaped`""
+    }
+
+    Set-Content -Path $httpdConf -Value $c -Encoding UTF8
+    Write-LogOK "Puerto $port configurado en httpd.conf"
+
+    # 8. DocumentRoot y permisos NTFS
     $docRoot = "$apacheBase\htdocs"
     New-Item -ItemType Directory -Path $docRoot -Force | Out-Null
 
-    # Usuario dedicado ApacheSvc (permisos limitados a htdocs)
+    # Usuario dedicado con permisos limitados a htdocs
     $apacheUser = "ApacheSvc"
     if (-not (Get-LocalUser -Name $apacheUser -ErrorAction SilentlyContinue)) {
-        Add-Type -AssemblyName System.Web
-        $secPw = ConvertTo-SecureString ([System.Web.Security.Membership]::GeneratePassword(16,2)) -AsPlainText -Force
+        try {
+            Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
+            $pw = [System.Web.Security.Membership]::GeneratePassword(16,2)
+        } catch {
+            $pw = "Apache@$(Get-Random -Minimum 10000 -Maximum 99999)!"
+        }
+        $secPw = ConvertTo-SecureString $pw -AsPlainText -Force
         New-LocalUser -Name $apacheUser -Password $secPw `
                       -PasswordNeverExpires -UserMayNotChangePassword `
-                      -Description "Usuario dedicado Apache HTTP" | Out-Null
+                      -Description "Usuario dedicado Apache HTTP" `
+                      -ErrorAction SilentlyContinue | Out-Null
         Write-LogOK "Usuario $apacheUser creado"
     }
 
-    $acl  = Get-Acl $docRoot
-    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-        $apacheUser,"ReadAndExecute","ContainerInherit,ObjectInherit","None","Allow")
-    $acl.SetAccessRule($rule)
-    Set-Acl -Path $docRoot -AclObject $acl
-    Write-LogOK "Permisos NTFS: $apacheUser -> ReadAndExecute en $docRoot"
+    try {
+        $acl  = Get-Acl $docRoot
+        $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $apacheUser,"ReadAndExecute","ContainerInherit,ObjectInherit","None","Allow")
+        $acl.SetAccessRule($rule)
+        Set-Acl -Path $docRoot -AclObject $acl
+        Write-LogOK "Permisos NTFS: $apacheUser -> ReadAndExecute en $docRoot"
+    } catch {
+        Write-LogWar "No se pudieron aplicar permisos NTFS: $_"
+    }
 
-    # 7. Index
+    # 9. Index personalizado
     New-IndexHtml -Name "Apache" -Version $verReal -Port $port -Root $docRoot
 
-    # 8. Hardening
+    # 10. Hardening
     Invoke-HardenApacheWin -ApacheBase $apacheBase
 
-    # 9. Instalar como servicio Windows
+    # 11. Registrar como servicio Windows e iniciar
     Write-LogInf "Registrando Apache como servicio Windows..."
-    & "$apacheBase\bin\httpd.exe" -k install -n "Apache" 2>&1 | Select-Object -Last 3
-    Start-Service "Apache" -ErrorAction SilentlyContinue
+    $regOut = & "$apacheBase\bin\httpd.exe" -k install -n "Apache" 2>&1
+    $regOut | ForEach-Object { Write-Host $_ }
 
-    # 10. Firewall
+    Start-Service "Apache" -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 3
+
+    # Verificar que el servicio inicio
+    $svc = Get-Service -Name "Apache" -ErrorAction SilentlyContinue
+    if (-not $svc -or $svc.Status -ne 'Running') {
+        Write-LogWar "Servicio Apache no inicio automaticamente. Intentando arranque directo..."
+        $startOut = & "$apacheBase\bin\httpd.exe" -k start 2>&1
+        $startOut | ForEach-Object { Write-Host $_ }
+        Start-Sleep -Seconds 3
+    }
+
+    # 12. Firewall
     Open-FirewallPort -Port $port -Service "Apache"
 
-    # 11. Verificar
+    # 13. Verificar final
     if (Wait-ServiceStart -ServiceName "Apache" -Port $port) {
         $ip = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
                Where-Object { $_.InterfaceAlias -notmatch 'Loopback' } |
@@ -884,7 +1001,10 @@ function Deploy-ApacheWin {
         Write-LogOK "Apache $verReal activo en http://${ip}:${port}"
         Write-LogOK "Prueba: curl -I http://${ip}:${port}"
     } else {
-        Write-LogErr "Apache no inicio. Revisa: Get-EventLog -LogName Application -Source Apache*"
+        Write-LogErr "Apache no inicio correctamente."
+        Write-LogErr "Diagnostico:"
+        & "$apacheBase\bin\httpd.exe" -t 2>&1 | ForEach-Object { Write-Host "  $_" }
+        Write-LogErr "Log completo en: $LOG"
     }
 }
 
@@ -895,7 +1015,7 @@ function Deploy-NginxWin {
     Write-Host ""
     Write-Log "=== DESPLIEGUE DE NGINX (WINDOWS) ==="
 
-    # 1. Verificar existente
+    # 1. Verificar instalacion existente
     $verExistente = Get-ExistingInstall "nginx"
     if ($verExistente) {
         if (Confirm-Reinstall "Nginx" $verExistente) {
@@ -905,40 +1025,48 @@ function Deploy-NginxWin {
         }
     }
 
-    # 2. Version dinamica
-    $version  = Select-Version "nginx"
-    $chocoVer = if ($version -ne "latest") { "--version=$version" } else { "" }
+    # 2. Version dinamica via Chocolatey
+    $version = Select-Version "nginx"
 
     # 3. Puerto
     $port = Read-Port "Puerto de escucha para Nginx"
 
-    # 4. Instalar via Chocolatey
+    # 4. Instalar con funcion robusta
     Write-LogInf "Instalando Nginx via Chocolatey..."
-    if ($chocoVer) {
-        choco install nginx $chocoVer --force -y 2>&1 | Select-Object -Last 10
-    } else {
-        choco install nginx --force -y 2>&1 | Select-Object -Last 10
-    }
-    Refresh-EnvPath
-
-    $nginxBase = Find-NginxBase
-    if (-not $nginxBase) {
-        Write-LogErr "Nginx no encontrado tras la instalacion."
+    $ok = Install-ChocoPackage -Package "nginx" -Version $version
+    if (-not $ok) {
+        Write-LogErr "Instalacion de Nginx fallo. Abortando."
+        Write-LogErr "Puedes intentar manualmente: choco install nginx --force -y"
+        Read-Host "  Presiona Enter para volver al menu"
         return
     }
-    Write-LogOK "Nginx en: $nginxBase"
 
-    # Version real
-    $verReal = (& "$nginxBase\nginx.exe" -v 2>&1 |
-                ForEach-Object { ($_ -split '/') | Select-Object -Last 1 })
+    # 5. Localizar directorio de Nginx
+    $nginxBase = Find-NginxBase
+    if (-not $nginxBase) {
+        Write-LogErr "Nginx instalado pero no encontrado en rutas conocidas."
+        Write-LogErr "Rutas buscadas: C:\tools\nginx, C:\ProgramData\chocolatey\lib\nginx\tools\nginx, C:\nginx"
+        Write-LogErr "Revisa: $LOG"
+        Read-Host "  Presiona Enter para volver al menu"
+        return
+    }
+    Write-LogOK "Nginx encontrado en: $nginxBase"
+
+    # 6. Version real
+    $verReal = ""
+    try {
+        $verOut = & "$nginxBase\nginx.exe" -v 2>&1
+        $verReal = ($verOut | ForEach-Object { ($_ -split '/') | Select-Object -Last 1 }) | Select-Object -First 1
+        $verReal = $verReal.Trim()
+    } catch { }
     if (-not $verReal) { $verReal = $version }
+    Write-LogOK "Version Nginx: $verReal"
 
-    # 5. Reescribir nginx.conf completo con puerto correcto
+    # 7. Reescribir nginx.conf completo con puerto correcto
     Write-LogInf "Configurando Nginx en puerto $port..."
     $nginxConf = "$nginxBase\conf\nginx.conf"
     $wwwRoot   = "$nginxBase\html"
 
-    # Nota: en PowerShell el $ dentro de heredoc necesita escape con backtick
     $confContent = @"
 worker_processes  1;
 
@@ -979,56 +1107,107 @@ http {
 }
 "@
     Set-Content -Path $nginxConf -Value $confContent -Encoding UTF8
+    Write-LogOK "nginx.conf escrito con puerto $port"
 
-    # 6. Permisos NTFS en html
+    # 8. Validar configuracion antes de arrancar
+    Write-LogInf "Validando configuracion de Nginx..."
+    $testOut = & "$nginxBase\nginx.exe" -t -c $nginxConf 2>&1
+    $testOut | ForEach-Object { Write-Host "  $_" }
+    if ($LASTEXITCODE -ne 0) {
+        Write-LogErr "nginx.conf tiene errores de sintaxis. Abortando."
+        Read-Host "  Presiona Enter para volver al menu"
+        return
+    }
+    Write-LogOK "Configuracion Nginx valida"
+
+    # 9. Permisos NTFS en html
     New-Item -ItemType Directory -Path $wwwRoot -Force | Out-Null
 
     $nginxUser = "NginxSvc"
     if (-not (Get-LocalUser -Name $nginxUser -ErrorAction SilentlyContinue)) {
-        Add-Type -AssemblyName System.Web
-        $secPw = ConvertTo-SecureString ([System.Web.Security.Membership]::GeneratePassword(16,2)) -AsPlainText -Force
+        try {
+            Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
+            $pw = [System.Web.Security.Membership]::GeneratePassword(16,2)
+        } catch {
+            $pw = "Nginx@$(Get-Random -Minimum 10000 -Maximum 99999)!"
+        }
+        $secPw = ConvertTo-SecureString $pw -AsPlainText -Force
         New-LocalUser -Name $nginxUser -Password $secPw `
                       -PasswordNeverExpires -UserMayNotChangePassword `
-                      -Description "Usuario dedicado Nginx" | Out-Null
+                      -Description "Usuario dedicado Nginx" `
+                      -ErrorAction SilentlyContinue | Out-Null
         Write-LogOK "Usuario $nginxUser creado"
     }
 
-    $acl  = Get-Acl $wwwRoot
-    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-        $nginxUser,"ReadAndExecute","ContainerInherit,ObjectInherit","None","Allow")
-    $acl.SetAccessRule($rule)
-    Set-Acl -Path $wwwRoot -AclObject $acl
-    Write-LogOK "Permisos NTFS: $nginxUser -> ReadAndExecute en $wwwRoot"
+    try {
+        $acl  = Get-Acl $wwwRoot
+        $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $nginxUser,"ReadAndExecute","ContainerInherit,ObjectInherit","None","Allow")
+        $acl.SetAccessRule($rule)
+        Set-Acl -Path $wwwRoot -AclObject $acl
+        Write-LogOK "Permisos NTFS: $nginxUser -> ReadAndExecute en $wwwRoot"
+    } catch {
+        Write-LogWar "No se pudieron aplicar permisos NTFS: $_"
+    }
 
-    # 7. Index
+    # 10. Index personalizado
     New-IndexHtml -Name "Nginx" -Version $verReal -Port $port -Root $wwwRoot
 
-    # 8. Hardening (ya en la conf)
+    # 11. Hardening (ya incluido en nginx.conf)
     Invoke-HardenNginxWin -NginxBase $nginxBase
 
-    # 9. Registrar como servicio con NSSM
-    Write-LogInf "Registrando Nginx como servicio Windows con NSSM..."
+    # 12. Registrar como servicio con NSSM
+    Write-LogInf "Instalando NSSM para gestionar Nginx como servicio..."
     if (-not (Get-Command nssm -ErrorAction SilentlyContinue)) {
-        choco install nssm -y 2>&1 | Select-Object -Last 5
-        Refresh-EnvPath
+        $nssmOk = Install-ChocoPackage -Package "nssm" -Version "latest"
+        if (-not $nssmOk) {
+            Write-LogWar "NSSM no se instalo. Nginx correra como proceso en background."
+        }
+    } else {
+        Write-LogOK "NSSM ya disponible"
     }
 
-    # Si ya existe el servicio nginx, eliminarlo primero
+    # Quitar servicio nginx previo si existe
     $svcExiste = Get-Service -Name "nginx" -ErrorAction SilentlyContinue
     if ($svcExiste) {
+        Write-LogInf "Eliminando servicio nginx previo..."
         Stop-Service "nginx" -Force -ErrorAction SilentlyContinue
-        nssm remove nginx confirm 2>&1 | Out-Null
+        Start-Sleep -Seconds 2
+        if (Get-Command nssm -ErrorAction SilentlyContinue) {
+            nssm remove nginx confirm 2>&1 | Out-Null
+        } else {
+            sc.exe delete nginx 2>&1 | Out-Null
+        }
+        Start-Sleep -Seconds 2
     }
 
-    nssm install nginx "$nginxBase\nginx.exe" 2>&1 | Select-Object -Last 3
-    nssm set nginx AppDirectory $nginxBase     2>&1 | Out-Null
-    nssm start  nginx                          2>&1 | Select-Object -Last 3
+    # Matar cualquier proceso nginx colgado
+    Get-Process -Name "nginx" -ErrorAction SilentlyContinue | Stop-Process -Force
 
-    # 10. Firewall
+    if (Get-Command nssm -ErrorAction SilentlyContinue) {
+        Write-LogInf "Registrando Nginx con NSSM..."
+        $nssmOut = nssm install nginx "$nginxBase\nginx.exe" 2>&1
+        $nssmOut | ForEach-Object { Write-Host "  $_" }
+        nssm set nginx AppDirectory $nginxBase 2>&1 | Out-Null
+        nssm set nginx AppStdout "$nginxBase\logs\nssm-stdout.log" 2>&1 | Out-Null
+        nssm set nginx AppStderr "$nginxBase\logs\nssm-stderr.log" 2>&1 | Out-Null
+        Start-Sleep -Seconds 1
+        $startOut = nssm start nginx 2>&1
+        $startOut | ForEach-Object { Write-Host "  $_" }
+    } else {
+        # Fallback: arrancar nginx directamente como proceso
+        Write-LogWar "NSSM no disponible. Arrancando Nginx directamente..."
+        Start-Process -FilePath "$nginxBase\nginx.exe" `
+                      -WorkingDirectory $nginxBase `
+                      -WindowStyle Hidden
+    }
+
+    Start-Sleep -Seconds 4
+
+    # 13. Firewall
     Open-FirewallPort -Port $port -Service "Nginx"
 
-    # 11. Verificar
-    Start-Sleep -Seconds 4
+    # 14. Verificar
     if (Wait-ServiceStart -ServiceName "nginx" -Port $port) {
         $ip = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
                Where-Object { $_.InterfaceAlias -notmatch 'Loopback' } |
@@ -1037,6 +1216,14 @@ http {
         Write-LogOK "Nginx $verReal activo en http://${ip}:${port}"
         Write-LogOK "Prueba: curl -I http://${ip}:${port}"
     } else {
-        Write-LogErr "Nginx no inicio. Revisa: nssm status nginx"
+        Write-LogErr "Nginx no inicio correctamente."
+        Write-LogErr "Diagnostico:"
+        if (Test-Path "$nginxBase\logs\error.log") {
+            Get-Content "$nginxBase\logs\error.log" -Tail 10 | ForEach-Object { Write-Host "  $_" }
+        }
+        if (Get-Command nssm -ErrorAction SilentlyContinue) {
+            Write-LogErr "Estado NSSM: $(nssm status nginx 2>&1)"
+        }
+        Write-LogErr "Log completo en: $LOG"
     }
 }
