@@ -805,6 +805,11 @@ function Deploy-IIS {
     } else {
         Write-LogErr "IIS no inicio. Revisa el Visor de Eventos de Windows."
     }
+
+    # Pausa para leer resultado antes de volver al menu
+    Write-Host ""
+    Write-LogInf "Volviendo al menu en 5 segundos... (Ctrl+C para quedarse)"
+    Start-Sleep -Seconds 5
 }
 
 
@@ -821,18 +826,17 @@ function Install-ChocoPackage {
     Write-LogInf "Preparando instalacion de $Package..."
 
     # Limpiar residuos de instalaciones anteriores de este paquete
-    $pkgLibDir  = "C:\ProgramData\chocolatey\lib\$Package"
-    $pkgBadDir  = "C:\ProgramData\chocolatey\lib-bad\$Package"
-    $pkgTmpDir  = "C:\ProgramData\chocolatey\lib-bkp\$Package"
+    $pkgLibDir = "C:\ProgramData\chocolatey\lib\$Package"
+    $pkgBadDir = "C:\ProgramData\chocolatey\lib-bad\$Package"
+    $pkgTmpDir = "C:\ProgramData\chocolatey\lib-bkp\$Package"
 
     foreach ($d in @($pkgBadDir, $pkgTmpDir)) {
         if (Test-Path $d) {
-            Write-LogWar "Residuo choco encontrado: $d  -> eliminando"
+            Write-LogWar "Residuo choco encontrado: $d -> eliminando"
             Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 
-    # Si hay un lib dir pero el paquete no funciona, borrarlo
     if (Test-Path $pkgLibDir) {
         $verFile = "$pkgLibDir\$Package.nuspec"
         if (-not (Test-Path $verFile)) {
@@ -841,34 +845,139 @@ function Install-ChocoPackage {
         }
     }
 
-    # Armar argumentos
-    $chocoArgs = @("install", $Package, "--force", "-y", "--no-progress")
+    # Armar argumentos (sin --no-progress para poder parsear la descarga)
+    $chocoArgs = @("install", $Package, "--force", "-y")
     if ($Version -ne "latest") {
         $chocoArgs += "--version=$Version"
     }
 
     Write-LogInf "Ejecutando: choco $($chocoArgs -join ' ')"
+    Write-Host ""
 
-    # Ejecutar choco y capturar salida completa (visible + guardada en log)
-    $output = & choco @chocoArgs 2>&1
-    $exitCode = $LASTEXITCODE
+    # ── Barra de progreso en tiempo real ─────────────────────────
+    # Choco imprime lineas como:
+    #   Downloading https://... (xx MB)
+    #   Progress: Saving... xx%
+    # Las capturamos y mostramos una barra ASCII en consola
 
-    # Mostrar TODA la salida para que se vea en pantalla
-    $output | ForEach-Object { Write-Host $_ }
+    $barWidth    = 40
+    $lastPct     = -1
+    $phase       = "Iniciando"
+    $exitCode    = 0
+    $allOutput   = [System.Collections.Generic.List[string]]::new()
 
-    # Guardar en log
-    $output | ForEach-Object { Add-Content -Path $LOG -Value $_ -Encoding UTF8 -ErrorAction SilentlyContinue }
+    # Funcion interna para dibujar la barra
+    $drawBar = {
+        param([int]$pct, [string]$label)
+        $filled = [math]::Round($barWidth * $pct / 100)
+        $empty  = $barWidth - $filled
+        $bar    = "[" + ("#" * $filled) + ("-" * $empty) + "]"
+        # \r sobreescribe la linea actual sin hacer scroll
+        $line   = "`r  $label  $bar $pct%   "
+        [Console]::Write($line)
+    }
+
+    # Usar Start-Process con redireccion a archivo temporal para leer en tiempo real
+    $tmpLog = "$env:TEMP\choco_progress_$Package.log"
+    Remove-Item $tmpLog -Force -ErrorAction SilentlyContinue
+
+    # Lanzar choco redirigiendo stdout+stderr al archivo temporal
+    $proc = Start-Process "choco.exe" `
+        -ArgumentList ($chocoArgs -join ' ') `
+        -RedirectStandardOutput $tmpLog `
+        -RedirectStandardError  "$tmpLog.err" `
+        -NoNewWindow `
+        -PassThru
+
+    $lastSize = 0
+    $pct      = 0
+
+    # Leer el archivo de log mientras choco corre
+    while (-not $proc.HasExited) {
+        Start-Sleep -Milliseconds 400
+
+        if (Test-Path $tmpLog) {
+            $currentSize = (Get-Item $tmpLog).Length
+            if ($currentSize -gt $lastSize) {
+                # Leer solo las lineas nuevas
+                $newLines = Get-Content $tmpLog -Encoding UTF8 -ErrorAction SilentlyContinue |
+                            Select-Object -Skip ([math]::Max(0, ($lastSize / 80 - 2)))
+                $lastSize = $currentSize
+
+                foreach ($line in $newLines) {
+                    $allOutput.Add($line)
+                    Add-Content -Path $LOG -Value $line -Encoding UTF8 -ErrorAction SilentlyContinue
+
+                    # Detectar fase actual
+                    if ($line -match 'Downloading') {
+                        $phase = "Descargando"
+                        $pct   = 5
+                    }
+                    elseif ($line -match 'Progress.*?(\d+)\s*%') {
+                        $pct   = [int]$Matches[1]
+                        $phase = "Descargando"
+                    }
+                    elseif ($line -match 'Extracting|Unzipping|Installing') {
+                        $phase = "Extrayendo "
+                        $pct   = 85
+                    }
+                    elseif ($line -match 'Adding.*?PATH|shimgen|shim') {
+                        $phase = "Finalizando"
+                        $pct   = 95
+                    }
+                    elseif ($line -match 'successfully installed|already installed') {
+                        $phase = "Completado "
+                        $pct   = 100
+                    }
+                    elseif ($line -match 'ERROR|WARN|The install of') {
+                        # Mostrar errores importantes directamente
+                        if ($line -match 'ERROR') {
+                            Write-Host ""
+                            Write-Host "  [!] $line"
+                        }
+                    }
+
+                    # Redibujar barra solo si cambio el porcentaje
+                    if ($pct -ne $lastPct) {
+                        & $drawBar $pct $phase
+                        $lastPct = $pct
+                    }
+                }
+            }
+        }
+    }
+
+    # Leer resto del log tras terminar
+    if (Test-Path $tmpLog) {
+        $remaining = Get-Content $tmpLog -Encoding UTF8 -ErrorAction SilentlyContinue
+        foreach ($line in $remaining) { $allOutput.Add($line) }
+    }
+    if (Test-Path "$tmpLog.err") {
+        $errLines = Get-Content "$tmpLog.err" -Encoding UTF8 -ErrorAction SilentlyContinue
+        foreach ($line in $errLines) { $allOutput.Add("[stderr] $line") }
+    }
+
+    $exitCode = $proc.ExitCode
+    Remove-Item $tmpLog      -Force -ErrorAction SilentlyContinue
+    Remove-Item "$tmpLog.err" -Force -ErrorAction SilentlyContinue
+
+    # Terminar la linea de la barra y dejar espacio
+    Write-Host ""
+    Write-Host ""
+
+    # Mostrar ultimas lineas relevantes de la salida
+    Write-Host "  --- Salida de Chocolatey ---"
+    $allOutput | Select-Object -Last 15 | ForEach-Object { Write-Host "  $_" }
+    Write-Host "  ----------------------------"
 
     if ($exitCode -ne 0) {
         Write-LogErr "choco install $Package fallo con ExitCode $exitCode"
-        Write-LogErr "Revisa el log completo en: $LOG"
+        Write-LogErr "Log completo en: $LOG"
         return $false
     }
 
-    # Recargar PATH para que el binario recien instalado sea visible
     Refresh-EnvPath
-
-    Write-LogOK "$Package instalado correctamente via Chocolatey"
+    Write-LogOK "$Package instalado correctamente"
     return $true
 }
 
@@ -1028,6 +1137,11 @@ function Deploy-ApacheWin {
         & "$apacheBase\bin\httpd.exe" -t 2>&1 | ForEach-Object { Write-Host "  $_" }
         Write-LogErr "Log completo en: $LOG"
     }
+
+    # Pausa para leer resultado antes de volver al menu
+    Write-Host ""
+    Write-LogInf "Volviendo al menu en 5 segundos... (Ctrl+C para quedarse)"
+    Start-Sleep -Seconds 5
 }
 
 # ==============================================================
@@ -1248,4 +1362,9 @@ http {
         }
         Write-LogErr "Log completo en: $LOG"
     }
+
+    # Pausa para leer resultado antes de volver al menu
+    Write-Host ""
+    Write-LogInf "Volviendo al menu en 5 segundos... (Ctrl+C para quedarse)"
+    Start-Sleep -Seconds 5
 }
