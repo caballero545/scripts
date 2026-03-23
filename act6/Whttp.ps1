@@ -845,134 +845,71 @@ function Install-ChocoPackage {
         }
     }
 
-    # Armar argumentos (sin --no-progress para poder parsear la descarga)
-    $chocoArgs = @("install", $Package, "--force", "-y")
+    # Armar argumentos
+    $chocoArgs = @("install", $Package, "--force", "-y", "--no-progress")
     if ($Version -ne "latest") {
         $chocoArgs += "--version=$Version"
     }
 
     Write-LogInf "Ejecutando: choco $($chocoArgs -join ' ')"
     Write-Host ""
+    Write-Host "  Instalando $Package, esto puede tardar varios minutos..."
+    Write-Host "  No cierres la ventana aunque parezca que no pasa nada."
+    Write-Host ""
 
-    # ── Barra de progreso en tiempo real ─────────────────────────
-    # Choco imprime lineas como:
-    #   Downloading https://... (xx MB)
-    #   Progress: Saving... xx%
-    # Las capturamos y mostramos una barra ASCII en consola
+    # Spinner mientras choco trabaja en background
+    # choco se lanza en job para poder mostrar spinner en paralelo
+    $job = Start-Job -ScriptBlock {
+        param($args_list)
+        & choco @args_list 2>&1
+    } -ArgumentList (,$chocoArgs)
 
-    $barWidth    = 40
-    $lastPct     = -1
-    $phase       = "Iniciando"
-    $exitCode    = 0
-    $allOutput   = [System.Collections.Generic.List[string]]::new()
+    $spinChars = @('|', '/', '-', '\')
+    $spinIdx   = 0
+    $elapsed   = 0
 
-    # Funcion interna para dibujar la barra
-    $drawBar = {
-        param([int]$pct, [string]$label)
-        $filled = [math]::Round($barWidth * $pct / 100)
-        $empty  = $barWidth - $filled
-        $bar    = "[" + ("#" * $filled) + ("-" * $empty) + "]"
-        # \r sobreescribe la linea actual sin hacer scroll
-        $line   = "`r  $label  $bar $pct%   "
-        [Console]::Write($line)
+    while ($job.State -eq 'Running') {
+        $spin    = $spinChars[$spinIdx % 4]
+        $mins    = [math]::Floor($elapsed / 60)
+        $secs    = $elapsed % 60
+        $timeStr = "{0:D2}:{1:D2}" -f $mins, $secs
+
+        [Console]::Write("`r  $spin  Trabajando... $timeStr  (choco instalando $Package)   ")
+
+        Start-Sleep -Seconds 1
+        $elapsed++
+        $spinIdx++
     }
 
-    # Usar Start-Process con redireccion a archivo temporal para leer en tiempo real
-    $tmpLog = "$env:TEMP\choco_progress_$Package.log"
-    Remove-Item $tmpLog -Force -ErrorAction SilentlyContinue
-
-    # Lanzar choco redirigiendo stdout+stderr al archivo temporal
-    $proc = Start-Process "choco.exe" `
-        -ArgumentList ($chocoArgs -join ' ') `
-        -RedirectStandardOutput $tmpLog `
-        -RedirectStandardError  "$tmpLog.err" `
-        -NoNewWindow `
-        -PassThru
-
-    $lastSize = 0
-    $pct      = 0
-
-    # Leer el archivo de log mientras choco corre
-    while (-not $proc.HasExited) {
-        Start-Sleep -Milliseconds 400
-
-        if (Test-Path $tmpLog) {
-            $currentSize = (Get-Item $tmpLog).Length
-            if ($currentSize -gt $lastSize) {
-                # Leer solo las lineas nuevas
-                $newLines = Get-Content $tmpLog -Encoding UTF8 -ErrorAction SilentlyContinue |
-                            Select-Object -Skip ([math]::Max(0, ($lastSize / 80 - 2)))
-                $lastSize = $currentSize
-
-                foreach ($line in $newLines) {
-                    $allOutput.Add($line)
-                    Add-Content -Path $LOG -Value $line -Encoding UTF8 -ErrorAction SilentlyContinue
-
-                    # Detectar fase actual
-                    if ($line -match 'Downloading') {
-                        $phase = "Descargando"
-                        $pct   = 5
-                    }
-                    elseif ($line -match 'Progress.*?(\d+)\s*%') {
-                        $pct   = [int]$Matches[1]
-                        $phase = "Descargando"
-                    }
-                    elseif ($line -match 'Extracting|Unzipping|Installing') {
-                        $phase = "Extrayendo "
-                        $pct   = 85
-                    }
-                    elseif ($line -match 'Adding.*?PATH|shimgen|shim') {
-                        $phase = "Finalizando"
-                        $pct   = 95
-                    }
-                    elseif ($line -match 'successfully installed|already installed') {
-                        $phase = "Completado "
-                        $pct   = 100
-                    }
-                    elseif ($line -match 'ERROR|WARN|The install of') {
-                        # Mostrar errores importantes directamente
-                        if ($line -match 'ERROR') {
-                            Write-Host ""
-                            Write-Host "  [!] $line"
-                        }
-                    }
-
-                    # Redibujar barra solo si cambio el porcentaje
-                    if ($pct -ne $lastPct) {
-                        & $drawBar $pct $phase
-                        $lastPct = $pct
-                    }
-                }
-            }
-        }
-    }
-
-    # Leer resto del log tras terminar
-    if (Test-Path $tmpLog) {
-        $remaining = Get-Content $tmpLog -Encoding UTF8 -ErrorAction SilentlyContinue
-        foreach ($line in $remaining) { $allOutput.Add($line) }
-    }
-    if (Test-Path "$tmpLog.err") {
-        $errLines = Get-Content "$tmpLog.err" -Encoding UTF8 -ErrorAction SilentlyContinue
-        foreach ($line in $errLines) { $allOutput.Add("[stderr] $line") }
-    }
-
-    $exitCode = $proc.ExitCode
-    Remove-Item $tmpLog      -Force -ErrorAction SilentlyContinue
-    Remove-Item "$tmpLog.err" -Force -ErrorAction SilentlyContinue
-
-    # Terminar la linea de la barra y dejar espacio
+    # Terminar linea del spinner
     Write-Host ""
     Write-Host ""
 
-    # Mostrar ultimas lineas relevantes de la salida
+    # Obtener salida y exit code del job
+    $output   = Receive-Job -Job $job
+    $jobState = $job.State
+    Remove-Job  -Job $job -Force
+
+    # Mostrar salida completa
     Write-Host "  --- Salida de Chocolatey ---"
-    $allOutput | Select-Object -Last 15 | ForEach-Object { Write-Host "  $_" }
+    $output | ForEach-Object {
+        Write-Host "  $_"
+        Add-Content -Path $LOG -Value $_ -Encoding UTF8 -ErrorAction SilentlyContinue
+    }
     Write-Host "  ----------------------------"
+    Write-Host ""
 
-    if ($exitCode -ne 0) {
-        Write-LogErr "choco install $Package fallo con ExitCode $exitCode"
-        Write-LogErr "Log completo en: $LOG"
+    # Determinar exito revisando la salida (job no devuelve ExitCode directo)
+    $exitOk = $output | Where-Object {
+        $_ -match 'successfully installed|already installed|Software installed'
+    }
+    $exitErr = $output | Where-Object {
+        $_ -match 'ERROR|The install of .* was NOT successful'
+    }
+
+    if ($exitErr -and -not $exitOk) {
+        Write-LogErr "choco install $Package fallo."
+        Write-LogErr "Revisa el log en: $LOG"
         return $false
     }
 
