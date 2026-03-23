@@ -658,6 +658,7 @@ function Wait-ServiceStart {
 # BUSCAR RUTA DE NGINX INSTALADO POR CHOCO
 # --------------------------------------------------------------
 function Find-NginxBase {
+    # Rutas fijas conocidas
     $candidates = @(
         "C:\tools\nginx",
         "C:\ProgramData\chocolatey\lib\nginx\tools\nginx",
@@ -666,8 +667,29 @@ function Find-NginxBase {
     foreach ($c in $candidates) {
         if (Test-Path "$c\nginx.exe") { return $c }
     }
+
+    # Choco instala con version en nombre: C:\tools\nginx-1.27.5
+    if (Test-Path "C:\tools") {
+        $versionedDir = Get-ChildItem "C:\tools" -Directory |
+                        Where-Object { $_.Name -match '^nginx' } |
+                        Sort-Object Name -Descending |
+                        Select-Object -First 1
+        if ($versionedDir -and (Test-Path "$($versionedDir.FullName)\nginx.exe")) {
+            return $versionedDir.FullName
+        }
+    }
+
+    # Buscar recursivo en lib de chocolatey
+    if (Test-Path "C:\ProgramData\chocolatey\lib\nginx") {
+        $found = Get-ChildItem "C:\ProgramData\chocolatey\lib\nginx" -Recurse -Filter "nginx.exe" -ErrorAction SilentlyContinue |
+                 Select-Object -First 1
+        if ($found) { return $found.DirectoryName }
+    }
+
+    # Ultimo recurso: PATH
     $exe = Get-Command nginx.exe -ErrorAction SilentlyContinue
     if ($exe) { return Split-Path $exe.Source }
+
     return $null
 }
 
