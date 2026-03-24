@@ -872,7 +872,7 @@ function Install-ChocoPackage {
         $spin    = $spinChars[$spinIdx % 4]
         $mins    = [math]::Floor($elapsed / 60)
         $secs    = $elapsed % 60
-        $timeStr = "{0:D2}:{1:D2}" -f $mins, $secs
+        $timeStr = "{0:00}:{1:00}" -f $mins, $secs
 
         [Console]::Write("`r  $spin  Trabajando... $timeStr  (choco instalando $Package)   ")
 
